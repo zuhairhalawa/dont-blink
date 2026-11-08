@@ -44,10 +44,19 @@ import type { VitalsReading } from './types';
  *                     no value for that metric.
  */
 export function decodeReading(buf: Uint8Array, timestampUs: number): VitalsReading {
+  return readingFromMetrics(decodeMetrics(buf), timestampUs);
+}
+
+/** The decoded Metrics message (as returned by decodeMetrics). */
+export type DecodedMetrics = ReturnType<typeof decodeMetrics>;
+
+/**
+ * Map an already-decoded Metrics message to a VitalsReading. Lets callers that
+ * also read face data decode each buffer only once.
+ */
+export function readingFromMetrics(metrics: DecodedMetrics, timestampUs: number): VitalsReading {
   // Convert microseconds → milliseconds for our timestamp field.
   const timestamp = timestampUs / 1000;
-
-  const metrics = decodeMetrics(buf);
 
   // ------------------------------------------------------------------
   // Pulse rate  (metrics.cardio.pulseRate — IMeasurementWithConfidence[])
