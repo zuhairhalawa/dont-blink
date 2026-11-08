@@ -23,6 +23,10 @@ import { bindSmartSpectraIpc } from '@smartspectra/node-sdk/main';
 
 const PRESAGE_API_KEY = process.env['PRESAGE_API_KEY'];
 
+// Enables Chromium's built-in on-device FaceDetector, used to notice when the
+// player turns away from the screen (kit/vitals/FaceWatch.ts).
+app.commandLine.appendSwitch('enable-experimental-web-platform-features');
+
 app.whenReady().then(() => {
   if (!PRESAGE_API_KEY) {
     dialog.showErrorBox(

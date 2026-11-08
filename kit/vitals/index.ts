@@ -10,3 +10,6 @@ export { classifySdkError } from './errorPolicy';
 export type { ErrorAction } from './errorPolicy';
 export { PresageSensor, hintFor } from './PresageSensor';
 export type { PresageSensorEvents } from './PresageSensor';
+export { FaceWatch, faceWatchSupported } from './FaceWatch';
+export { createPresenceFilter } from './presence';
+export type { PresenceFilter } from './presence';

@@ -7,8 +7,6 @@
  * Events:
  *   blink(atMs)          the eyes just closed (SDK timestamp, ms)
  *   reading(r)           latest pulse and breathing, held for up to 10 s
- *   face(present)        false while the SDK reports no face or the face
- *                        turned away; true again once it is back
  *   hint({code,message}) friendly framing hint for every validation status
  *   fatalError(message)  the session cannot continue; the sensor has already
  *                        stopped the SDK and the camera
@@ -34,13 +32,9 @@ import type { VitalsReading } from './types';
 export interface PresageSensorEvents {
   blink: (atMs: number) => void;
   reading: (r: VitalsReading) => void;
-  face: (present: boolean) => void;
   hint: (h: { code: number; message: string }) => void;
   fatalError: (message: string) => void;
 }
-
-/** Validation codes that mean the player is not facing the camera. */
-const FACE_GONE = new Set([1, 17]); // kNoFaceFound, kFaceNotForward
 
 const HINTS: Record<number, string> = {
   0: 'Signal good',
@@ -69,7 +63,6 @@ export class PresageSensor extends TinyEmitter<PresageSensorEvents> {
   private readonly sdk: SmartSpectraSDK;
   private readonly stream: MediaStream;
   private stopped = false;
-  private facePresent = true;
 
   constructor(apiKey: string, stream: MediaStream, telemetry: boolean) {
     super();
@@ -121,11 +114,6 @@ export class PresageSensor extends TinyEmitter<PresageSensorEvents> {
     this.sdk.on('validationStatus', (code: number) => {
       const c = Number(code);
       this.emit('hint', { code: c, message: hintFor(c) });
-      const present = !FACE_GONE.has(c);
-      if (present !== this.facePresent) {
-        this.facePresent = present;
-        this.emit('face', present);
-      }
     });
 
     this.sdk.on('error', (code: number, message: string, retryable: boolean) => {

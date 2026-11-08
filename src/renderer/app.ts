@@ -13,6 +13,7 @@
 
 import { setConsent, getConsentRecord } from 'kit/consent/ConsentRecord';
 import { PresageSensor } from 'kit/vitals/PresageSensor';
+import { FaceWatch, faceWatchSupported } from 'kit/vitals/FaceWatch';
 import type { VitalsReading } from 'kit/vitals/types';
 import {
   createGame, startGame, onBlink, onFace, tick, secondsLeft, stareProgress,
@@ -42,7 +43,22 @@ const READY_CODES = new Set([0, 7, 10]);
 
 let sensor: PresageSensor | null = null;
 let latest: VitalsReading | null = null;
+let faceWatch: FaceWatch | null = null;
+/** Latest SDK validation code is good enough to play. */
+let signalOk = false;
+/** A face is turned toward the screen (FaceWatch). */
+let facing = true;
 let faceOk = false;
+
+/** Update the get-ready hint and the Begin button from both signals. */
+function refreshReady(sdkMessage: string): void {
+  faceOk = signalOk && facing;
+  const el = $('ready-hint');
+  el.textContent = !facing ? 'Look at the screen.' : faceOk ? 'Signal good. You can begin.' : sdkMessage;
+  el.dataset['ok'] = String(faceOk);
+  $<HTMLButtonElement>('btn-begin').disabled = !faceOk;
+}
+let lastSdkMessage = 'Starting the camera…';
 
 async function startCamera(): Promise<void> {
   const apiKey = await window.dontBlink.getPresageApiKey();
@@ -55,11 +71,9 @@ async function startCamera(): Promise<void> {
   s.on('hint', ({ code, message }) => {
     // Blinks only need the face. "Chest not visible" (7) and "camera
     // adjusting" (10) affect breathing, not blinks, so they don't block play.
-    faceOk = READY_CODES.has(code);
-    const el = $('ready-hint');
-    el.textContent = faceOk ? 'Signal good. You can begin.' : message;
-    el.dataset['ok'] = String(faceOk);
-    $<HTMLButtonElement>('btn-begin').disabled = !faceOk;
+    signalOk = READY_CODES.has(code);
+    lastSdkMessage = message;
+    refreshReady(message);
   });
 
   s.on('reading', (r) => {
@@ -71,7 +85,6 @@ async function startCamera(): Promise<void> {
   });
 
   s.on('blink', () => round?.onBlink(Date.now()));
-  s.on('face', (present) => round?.onFace(present, Date.now()));
 
   s.on('fatalError', (message) => {
     sensor = null;
@@ -83,6 +96,18 @@ async function startCamera(): Promise<void> {
   const preview = $<HTMLVideoElement>('preview');
   preview.srcObject = stream;
   void preview.play().catch(() => undefined);
+  // Looking away is detected on the device by Chromium's FaceDetector,
+  // because the SDK's status doesn't change when the player turns away.
+  if (faceWatchSupported()) {
+    faceWatch = new FaceWatch(stream, (present) => {
+      facing = present;
+      refreshReady(lastSdkMessage);
+      round?.onFace(present, Date.now());
+    });
+    faceWatch.start();
+  } else {
+    console.warn('[app] FaceDetector unavailable: looking away will not be detected.');
+  }
   await s.start();
 }
 
@@ -91,6 +116,10 @@ async function stopCamera(): Promise<void> {
   sensor = null;
   latest = null;
   faceOk = false;
+  signalOk = false;
+  facing = true;
+  faceWatch?.stop();
+  faceWatch = null;
   $<HTMLVideoElement>('preview').srcObject = null;
   $<HTMLButtonElement>('btn-begin').disabled = true;
   if (s) await s.stop();
