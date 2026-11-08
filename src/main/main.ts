@@ -72,6 +72,22 @@ function createWindow(): BrowserWindow {
     if (level >= 2) console.log(`[renderer ${level === 3 ? 'error' : 'warn'}] ${message}`);
   });
 
+  // Close cleanly: ask the page to stop the camera and the Presage SDK first.
+  // Closing with the SDK still running crashed the process on exit (a native
+  // callback fired after shutdown). If the page doesn't answer in 2 s, close anyway.
+  let closing = false;
+  win.on('close', (e) => {
+    if (closing) return;
+    closing = true;
+    e.preventDefault();
+    win.webContents.send('app-closing');
+    const force = setTimeout(() => win.destroy(), 2000);
+    ipcMain.once('ready-to-close', () => {
+      clearTimeout(force);
+      win.destroy();
+    });
+  });
+
   void win.loadFile(path.join(__dirname, 'index.html'));
   return win;
 }

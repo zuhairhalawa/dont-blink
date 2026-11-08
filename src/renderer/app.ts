@@ -525,5 +525,8 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   });
 
-  window.addEventListener('beforeunload', () => void stopCamera());
+  window.dontBlink.onClosing(() => {
+    round?.abort();
+    void stopCamera().finally(() => window.dontBlink.readyToClose());
+  });
 });

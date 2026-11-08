@@ -63,6 +63,9 @@ export class PresageSensor extends TinyEmitter<PresageSensorEvents> {
   private readonly sdk: SmartSpectraSDK;
   private readonly stream: MediaStream;
   private stopped = false;
+  private recovering = false;
+  /** Times of recent recoveries, to give up if the SDK keeps failing. */
+  private recoveries: number[] = [];
 
   constructor(apiKey: string, stream: MediaStream, telemetry: boolean) {
     super();
@@ -122,7 +125,44 @@ export class PresageSensor extends TinyEmitter<PresageSensorEvents> {
       if (action.kind === 'fatal' && !this.stopped) {
         void this.stop();
         this.emit('fatalError', action.message);
+      } else if (Number(code) === 8) {
+        // kProcessingFailed: in play-tests the SDK said "retryable" but then
+        // stayed stuck ("not in a valid state"), and pulse and blinks stopped.
+        void this.recover();
       }
     });
+
+    // ProcessingStatus.kError (5): the pipeline has stopped; rebuild it.
+    this.sdk.on('processingStatus', (status: number) => {
+      if (Number(status) === 5) void this.recover();
+    });
+  }
+
+  /**
+   * Rebuild the SDK pipeline after it fails (reset() then start(), as the SDK
+   * documents for its error state). Gives up with a fatal error after three
+   * recoveries within a minute.
+   */
+  private async recover(): Promise<void> {
+    if (this.stopped || this.recovering) return;
+    const now = Date.now();
+    this.recoveries = this.recoveries.filter((t) => now - t < 60_000);
+    if (this.recoveries.length >= 3) {
+      void this.stop();
+      this.emit('fatalError', 'The Presage SDK kept failing to process video. Restart the game to try again.');
+      return;
+    }
+    this.recoveries.push(now);
+    this.recovering = true;
+    console.warn('[PresageSensor] processing failed; restarting the SDK pipeline');
+    try {
+      await this.sdk.reset();
+      if (!this.stopped) await this.sdk.start();
+      console.warn('[PresageSensor] SDK pipeline restarted');
+    } catch (err) {
+      console.error('[PresageSensor] restart failed:', err);
+    } finally {
+      this.recovering = false;
+    }
   }
 }

@@ -232,6 +232,29 @@ function blurAll(g: CanvasRenderingContext2D, strength: number): void {
   g.restore();
 }
 
+let sil: HTMLCanvasElement | null = null;
+
+/** The player's shape from the person mask, filled with a soft near-black. */
+function silhouette(mask: HTMLCanvasElement, w: number, h: number): HTMLCanvasElement {
+  sil = canvasOf(sil, w, h);
+  const g = sil.getContext('2d')!;
+  g.globalCompositeOperation = 'source-over';
+  g.clearRect(0, 0, w, h);
+  g.save();
+  // Slightly soft and slightly enlarged edges, so hair and ears stay covered.
+  g.filter = 'blur(3px)';
+  drawCoverMirrored(g, mask, mask.width, mask.height, w, h);
+  g.restore();
+  g.globalCompositeOperation = 'source-in';
+  const grad = g.createLinearGradient(0, 0, 0, h);
+  grad.addColorStop(0, '#1a1614');
+  grad.addColorStop(1, '#0b0908');
+  g.fillStyle = grad;
+  g.fillRect(0, 0, w, h);
+  g.globalCompositeOperation = 'source-over';
+  return sil;
+}
+
 /**
  * Privacy mode: hide the player's face in a layer. With a tracked face, the
  * face area is blurred; without one, the whole layer is, so a lost face never
@@ -294,12 +317,32 @@ export function drawRoom(ctx: CanvasRenderingContext2D, v: RoomView): void {
   const r = room.getContext('2d')!;
   r.globalCompositeOperation = 'source-over';
   drawCoverMirrored(r, video, vw, vh, w, h);
-  if (v.hideFace) hideFaceIn(r, v.face, w, h);
+
+  const lunging = v.step > CAUGHT_STEP - 1;
+  const behind = !lunging && v.mask !== null;
+
+  // Privacy mode: the player becomes a soft dark silhouette, cut from the
+  // person mask, so no face shows whichever way they turn (play-test: a
+  // face-tracked blur looked like a grey bubble and leaked a profile). Under
+  // it, the face area is also blurred in case a mask edge is thin. Without a
+  // mask yet, the whole picture is blurred.
+  let shadow: HTMLCanvasElement | null = null;
+  if (v.hideFace) {
+    if (v.mask) {
+      hideFaceIn(r, v.face, w, h);
+      shadow = silhouette(v.mask, w, h);
+    } else {
+      blurAll(r, Math.max(28, w / 40));
+    }
+  }
 
   // The Watcher, standing in the room.
   const p = placeWatcher(v.step, v.face, w, h);
-  const lunging = v.step > CAUGHT_STEP - 1;
-  const behind = !lunging && v.mask !== null;
+  // In the lunge it is in front of the player, so the shadow goes first.
+  if (lunging && shadow) {
+    r.drawImage(shadow, 0, 0);
+    r.drawImage(shadow, 0, 0);
+  }
   // Soften it into the picture: a faint shadow at its feet, a slight blur and
   // a touch of transparency, so it sits in the room instead of on top of it.
   if (!lunging) {
@@ -324,8 +367,9 @@ export function drawRoom(ctx: CanvasRenderingContext2D, v: RoomView): void {
   }
   r.restore();
 
-  // The player in front of it: cut out of the camera picture with the mask.
-  if (behind && v.mask) {
+  // The player in front of it: cut out of the camera picture with the mask
+  // (or their silhouette, in privacy mode).
+  if (behind && v.mask && !shadow) {
     cut = canvasOf(cut, w, h);
     const c = cut.getContext('2d')!;
     c.globalCompositeOperation = 'source-over';
@@ -334,8 +378,8 @@ export function drawRoom(ctx: CanvasRenderingContext2D, v: RoomView): void {
     c.globalCompositeOperation = 'destination-in';
     drawCoverMirrored(c, v.mask, v.mask.width, v.mask.height, w, h);
     c.globalCompositeOperation = 'source-over';
-    if (v.hideFace) hideFaceIn(c, v.face, w, h);
   }
+  const front = behind ? (shadow ?? (v.mask ? cut : null)) : null;
 
   // Normal camera colours (play-test: a dark grey grade hid the Watcher
   // against dark corners). Only the light dips for flicker and blackouts.
@@ -345,7 +389,11 @@ export function drawRoom(ctx: CanvasRenderingContext2D, v: RoomView): void {
   ctx.save();
   if (v.bright < 0.999) ctx.filter = `brightness(${Math.max(0.08, v.bright)})`;
   ctx.drawImage(room, dx, dy);
-  if (behind && cut) ctx.drawImage(cut, dx, dy);
+  if (front) {
+    ctx.drawImage(front, dx, dy);
+    // Twice for the silhouette, so its soft edges are solid enough.
+    if (front === shadow) ctx.drawImage(front, dx, dy);
+  }
   ctx.restore();
 
   // A light vignette that tightens as it gets closer.
