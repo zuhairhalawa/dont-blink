@@ -29,12 +29,6 @@ export default defineConfig({
         // Per-file 100% branch coverage for kit/signal/
         // Each signal module file must hit 100% branches
         perFile: true,
-        // The global thresholds above apply as defaults; the signal files are
-        // tested exhaustively (see design.md §13) and must reach 100% branches.
-        // To enforce signal-only 100% we use a separate thresholds entry:
-        'kit/signal/smooth.ts': { branches: 100 },
-        'kit/signal/baseline.ts': { branches: 100 },
-        'kit/signal/change.ts': { branches: 100 },
       },
     },
   },

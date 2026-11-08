@@ -2,7 +2,7 @@
  * kit/vitals: SmartSpectra SDK wrapper and the plain data types around it.
  * Only import PresageSensor in renderer code; it needs the SDK preload bridge.
  */
-export type { VitalsReading, Baseline } from './types';
+export type { VitalsReading } from './types';
 export { decodeReading, readingFromMetrics } from './decodeReading';
 export { createBlinkTracker, usToMs } from './blinks';
 export type { BlinkStatus, BlinkTracker } from './blinks';
