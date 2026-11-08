@@ -6,3 +6,17 @@ out/
 recordings/
 coverage/
 *.tsbuildinfo
+
+# Never commit pictures or recordings of the player.
+# Saved end cards (default name), screenshots and demo recordings stay local.
+dont-blink-*.png
+screenshots/
+recordings/
+*.mp4
+*.webm
+*.mov
+*.jpg
+*.jpeg
+# Only the Watcher artwork may be committed as PNG.
+*.png
+!assets/watcher-src/watcher-*.png
