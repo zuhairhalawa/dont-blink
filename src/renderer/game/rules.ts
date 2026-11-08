@@ -7,6 +7,7 @@
  *   - The Watcher stands at the far end of the corridor (step 0).
  *   - Every blink lets it move one step closer.
  *   - Looking away from the screen lets it move two steps closer.
+ *   - Keep your eyes shut and it keeps coming: one step every EYES_SHUT_STEP_MS.
  *   - Keep your eyes open for STARE_RETREAT_MS and it backs off one step.
  *   - It reaches you at CAUGHT_STEP: you lose.
  *   - Survive ROUND_MS: you win.
@@ -21,10 +22,12 @@ export const STARE_RETREAT_MS = 8_000;
 export const BLINK_DEBOUNCE_MS = 350;
 /** Steps the Watcher moves when you look away. */
 export const LOOK_AWAY_STEPS = 2;
+/** While the eyes stay shut, it takes another step this often. */
+export const EYES_SHUT_STEP_MS = 1500;
 
 export type Phase = 'ready' | 'playing' | 'caught' | 'survived';
 
-export type GameEventKind = 'blink' | 'lookAway' | 'advance' | 'retreat' | 'caught' | 'survived';
+export type GameEventKind = 'blink' | 'eyesShut' | 'lookAway' | 'advance' | 'retreat' | 'caught' | 'survived';
 
 export interface GameEvent {
   /** Milliseconds since the round started. */
@@ -48,6 +51,8 @@ export interface GameState {
   lastBlinkMs: number;
   /** True while the face is away from the screen. */
   away: boolean;
+  /** True while the eyes are held shut. */
+  eyesShut: boolean;
   events: GameEvent[];
 }
 
@@ -62,6 +67,7 @@ export function createGame(): GameState {
     lastLossMs: 0,
     lastBlinkMs: -Infinity,
     away: false,
+    eyesShut: false,
     events: [],
   };
 }
@@ -70,7 +76,7 @@ export function startGame(s: GameState, now: number): GameState {
   return { ...createGame(), phase: 'playing', startMs: now, lastLossMs: now };
 }
 
-function moveCloser(s: GameState, now: number, steps: number, cause: 'blink' | 'lookAway'): GameState {
+function moveCloser(s: GameState, now: number, steps: number, cause: 'blink' | 'eyesShut' | 'lookAway'): GameState {
   const t = now - s.startMs;
   const step = Math.min(CAUGHT_STEP, s.step + steps);
   const events: GameEvent[] = [...s.events, { t, kind: cause, step }, { t, kind: 'advance', step }];
@@ -110,14 +116,28 @@ export function onFace(s: GameState, present: boolean, now: number): GameState {
   return s;
 }
 
-/** Advance time: handle the stare retreat and the end of the round. */
+/**
+ * The eyes closed (closed=true) or opened again. Closing counts as a blink;
+ * while they stay shut, tick() keeps the Watcher coming.
+ */
+export function onEyes(s: GameState, closed: boolean, now: number): GameState {
+  if (s.phase !== 'playing') return s;
+  if (closed && !s.eyesShut) return { ...onBlink(s, now), eyesShut: true };
+  if (!closed && s.eyesShut) return { ...s, eyesShut: false };
+  return s;
+}
+
+/** Advance time: handle shut eyes, the stare retreat and the end of the round. */
 export function tick(s: GameState, now: number): GameState {
   if (s.phase !== 'playing') return s;
   const t = now - s.startMs;
   if (t >= ROUND_MS) {
     return { ...s, phase: 'survived', events: [...s.events, { t: ROUND_MS, kind: 'survived', step: s.step }] };
   }
-  if (!s.away && s.step > 0 && now - s.lastLossMs >= STARE_RETREAT_MS) {
+  if (s.eyesShut && now - s.lastLossMs >= EYES_SHUT_STEP_MS) {
+    return moveCloser(s, now, 1, 'eyesShut');
+  }
+  if (!s.away && !s.eyesShut && s.step > 0 && now - s.lastLossMs >= STARE_RETREAT_MS) {
     const step = s.step - 1;
     return { ...s, step, lastLossMs: now, events: [...s.events, { t, kind: 'retreat', step }] };
   }

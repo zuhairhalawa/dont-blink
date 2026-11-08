@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import {
-  createGame, startGame, onBlink, onFace, tick, secondsLeft, stareProgress,
+  createGame, startGame, onBlink, onFace, onEyes, tick, secondsLeft, stareProgress, EYES_SHUT_STEP_MS,
   ROUND_MS, CAUGHT_STEP, STARE_RETREAT_MS, BLINK_DEBOUNCE_MS, LOOK_AWAY_STEPS,
 } from '../../src/renderer/game/rules';
 
@@ -99,5 +99,40 @@ describe('rules', () => {
     s = onBlink(s, T0 + 1000);
     expect(stareProgress(s, T0 + 1000 + STARE_RETREAT_MS / 2)).toBeCloseTo(0.5);
     expect(secondsLeft(tick(s, T0 + ROUND_MS), T0 + ROUND_MS)).toBe(0);
+  });
+});
+
+describe('eyes held shut', () => {
+  it('counts the closing as a blink, then keeps coming while they stay shut', () => {
+    let s = startGame(createGame(), T0);
+    s = onEyes(s, true, T0 + 1000);
+    expect(s.step).toBe(1);
+    expect(s.blinks).toBe(1);
+    s = tick(s, T0 + 1000 + EYES_SHUT_STEP_MS - 1);
+    expect(s.step).toBe(1);
+    s = tick(s, T0 + 1000 + EYES_SHUT_STEP_MS);
+    expect(s.step).toBe(2);
+    s = tick(s, T0 + 1000 + 2 * EYES_SHUT_STEP_MS);
+    expect(s.step).toBe(3);
+    expect(s.blinks).toBe(1);
+    expect(s.events.filter((e) => e.kind === 'eyesShut')).toHaveLength(2);
+  });
+
+  it('stops coming once the eyes open, and a Presage blink in the same moment counts once', () => {
+    let s = startGame(createGame(), T0);
+    s = onEyes(s, true, T0 + 1000);
+    s = onBlink(s, T0 + 1120);
+    expect(s.step).toBe(1);
+    s = onEyes(s, false, T0 + 1300);
+    s = tick(s, T0 + 5000);
+    expect(s.step).toBe(1);
+  });
+
+  it('never backs off while the eyes are shut', () => {
+    let s = startGame(createGame(), T0);
+    s = onBlink(s, T0 + 500);
+    s = onEyes(s, true, T0 + 20_000);
+    for (let t = 20_000; t <= 20_000 + STARE_RETREAT_MS; t += 100) s = tick(s, T0 + t);
+    expect(s.events.some((e) => e.kind === 'retreat' && e.t > 20_000)).toBe(false);
   });
 });

@@ -14,4 +14,4 @@ export { FaceWatch, faceWatchSupported } from './FaceWatch';
 export { createPresenceFilter } from './presence';
 export type { PresenceFilter } from './presence';
 export { HeadWatch } from './HeadWatch';
-export { headRatios, createHeadJudge } from './headTurn';
+export { headAngles, eyesClosedScore, createHeadJudge } from './headTurn';

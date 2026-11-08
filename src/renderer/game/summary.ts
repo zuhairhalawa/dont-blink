@@ -48,7 +48,7 @@ export function summarize(game: GameState, samples: readonly Sample[]): RoundSum
   const durationMs = end ? end.t : ROUND_MS;
 
   const blinkTimes = game.events.filter((e) => e.kind === 'blink').map((e) => e.t);
-  const losses = game.events.filter((e) => e.kind === 'blink' || e.kind === 'lookAway').map((e) => e.t);
+  const losses = game.events.filter((e) => e.kind === 'blink' || e.kind === 'eyesShut' || e.kind === 'lookAway').map((e) => e.t);
   let longestStareMs = 0;
   let prev = 0;
   for (const t of [...losses, durationMs]) {

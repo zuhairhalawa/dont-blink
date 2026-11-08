@@ -18,7 +18,7 @@ import { HeadWatch } from 'kit/vitals/HeadWatch';
 import { PersonMask } from 'kit/vitals/PersonMask';
 import type { VitalsReading } from 'kit/vitals/types';
 import {
-  createGame, startGame, onBlink, onFace, tick, secondsLeft, stareProgress,
+  createGame, startGame, onBlink, onFace, onEyes, tick, secondsLeft, stareProgress,
   CAUGHT_STEP, type GameState,
 } from './game/rules';
 import { drawFrame, poseFor, POSES } from './game/corridor';
@@ -131,6 +131,12 @@ async function startCamera(): Promise<void> {
     hw.start();
     faceWatch = hw;
     headWatch = hw;
+    // Long eye closures: Presage reports quick blinks, so held-shut eyes come
+    // from MediaPipe's eye scores.
+    hw.onEyes = (closed) => {
+      console.info(`[eyes] ${closed ? 'closed' : 'open'}`);
+      round?.onEyes(closed, Date.now());
+    };
     console.info('[app] head tracking on (MediaPipe)');
   } catch (err) {
     console.warn('[app] head tracking unavailable, using face presence only:', err);
@@ -228,6 +234,12 @@ class Round {
     if (this.game !== before) this.closeLids(performance.now());
   }
 
+  onEyes(closed: boolean, now: number): void {
+    const before = this.game;
+    this.game = onEyes(this.game, closed, now);
+    if (this.game.step !== before.step) this.closeLids(performance.now());
+  }
+
   onFace(present: boolean, now: number): void {
     const before = this.game;
     this.game = onFace(this.game, present, now);
@@ -270,6 +282,10 @@ class Round {
 
     const before = this.game;
     this.game = tick(this.game, now);
+    if (this.game.step > before.step && this.game.eyesShut) {
+      // Eyes held shut: you hear it take another step.
+      this.closeLids(t);
+    }
     if (this.game.step < before.step) {
       // Held stare: the bulb dips and it is further away when the light returns.
       this.bulbDipUntil = t + 220;

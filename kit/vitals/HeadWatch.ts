@@ -16,7 +16,7 @@
  */
 
 import { FaceLandmarker } from '@mediapipe/tasks-vision';
-import { headRatios, createHeadJudge } from './headTurn';
+import { headAngles, eyesClosedScore, createHeadJudge, EYES_CLOSED, EYES_OPEN } from './headTurn';
 import { createPresenceFilter } from './presence';
 import { visionFileset, type AssetName, type LoadAsset } from './mediapipeFiles';
 
@@ -32,6 +32,9 @@ export class HeadWatch {
   private timer: number | null = null;
   private lastTs = 0;
   private box: FaceBox | null = null;
+  private eyesShut = false;
+  /** Called when both eyes close (true) or open again (false). */
+  onEyes: ((closed: boolean) => void) | null = null;
 
   private constructor(private readonly landmarker: FaceLandmarker, stream: MediaStream,
     private readonly onChange: (facing: boolean) => void) {
@@ -52,6 +55,8 @@ export class HeadWatch {
         baseOptions: { modelAssetBuffer: model, delegate: 'CPU' },
         runningMode: 'VIDEO',
         numFaces: 1,
+        outputFaceBlendshapes: true,
+        outputFacialTransformationMatrixes: true,
       },
     );
     return new HeadWatch(landmarker, stream, onChange);
@@ -76,8 +81,8 @@ export class HeadWatch {
     return this.filter.present;
   }
 
-  /** Check about ten times a second. */
-  start(intervalMs = 100): void {
+  /** Check about twenty times a second, so short eye closures are seen. */
+  start(intervalMs = 50): void {
     if (this.timer !== null) return;
     this.timer = window.setInterval(() => this.sample(), intervalMs);
   }
@@ -108,7 +113,18 @@ export class HeadWatch {
       } else {
         this.box = null;
       }
-      const facing = this.judge.push(lm ? headRatios(lm) : null);
+      const matrix = res.facialTransformationMatrixes?.[0]?.data;
+      const facing = this.judge.push(lm ? headAngles(matrix) : null);
+
+      // Eyes: closed above EYES_CLOSED, open again below EYES_OPEN.
+      const shut = eyesClosedScore(res.faceBlendshapes?.[0]?.categories);
+      if (shut !== null) {
+        const now = this.eyesShut ? shut > EYES_OPEN : shut > EYES_CLOSED;
+        if (now !== this.eyesShut) {
+          this.eyesShut = now;
+          this.onEyes?.(now);
+        }
+      }
       const change = this.filter.push(facing, ts);
       if (change !== null) this.onChange(change);
     } catch (err) {

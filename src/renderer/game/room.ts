@@ -168,7 +168,6 @@ export function drawRoom(ctx: CanvasRenderingContext2D, v: RoomView): void {
     c.globalCompositeOperation = 'destination-in';
     drawCoverMirrored(c, v.mask, v.mask.width, v.mask.height, w, h);
     c.globalCompositeOperation = 'source-over';
-    r.drawImage(cut, 0, 0);
   }
 
   // Night security-camera grade over everything.
@@ -176,8 +175,14 @@ export function drawRoom(ctx: CanvasRenderingContext2D, v: RoomView): void {
   const dx = v.shake ? (Math.random() - 0.5) * v.shake : 0;
   const dy = v.shake ? (Math.random() - 0.5) * v.shake : 0;
   ctx.save();
-  ctx.filter = `grayscale(1) sepia(0.3) brightness(${(0.5 - dread * 0.12) * v.bright}) contrast(1.5)`;
+  ctx.filter = `grayscale(1) sepia(0.3) brightness(${(behind ? 0.5 - dread * 0.12 : 0.7) * v.bright}) contrast(1.5)`;
   ctx.drawImage(room, dx, dy);
+  // The player stays readable: muted colour at nearly normal brightness, so
+  // their eyes and expression show (the full grade made their eyes vanish).
+  if (behind && cut) {
+    ctx.filter = `grayscale(0.55) sepia(0.2) brightness(${0.95 * Math.max(0.35, v.bright)}) contrast(1.1)`;
+    ctx.drawImage(cut, dx, dy);
+  }
   ctx.restore();
 
   // Rolling scan line, like an old camera.
