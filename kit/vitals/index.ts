@@ -13,3 +13,5 @@ export type { PresageSensorEvents } from './PresageSensor';
 export { FaceWatch, faceWatchSupported } from './FaceWatch';
 export { createPresenceFilter } from './presence';
 export type { PresenceFilter } from './presence';
+export { HeadWatch } from './HeadWatch';
+export { headRatios, createHeadJudge } from './headTurn';

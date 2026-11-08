@@ -13,6 +13,9 @@ contextBridge.exposeInMainWorld('dontBlink', {
   getPresageApiKey(): Promise<string> {
     return ipcRenderer.invoke('get-presage-api-key') as Promise<string>;
   },
+  loadAsset(name: 'mediapipe-loader' | 'mediapipe-wasm' | 'face-model'): Promise<Uint8Array> {
+    return ipcRenderer.invoke('load-asset', name) as Promise<Uint8Array>;
+  },
   savePng(dataUrl: string): Promise<{ ok: boolean; path?: string; error?: string }> {
     return ipcRenderer.invoke('save-png', dataUrl) as Promise<{ ok: boolean; path?: string; error?: string }>;
   },

@@ -14,6 +14,7 @@
 import { setConsent, getConsentRecord } from 'kit/consent/ConsentRecord';
 import { PresageSensor } from 'kit/vitals/PresageSensor';
 import { FaceWatch, faceWatchSupported } from 'kit/vitals/FaceWatch';
+import { HeadWatch } from 'kit/vitals/HeadWatch';
 import type { VitalsReading } from 'kit/vitals/types';
 import {
   createGame, startGame, onBlink, onFace, tick, secondsLeft, stareProgress,
@@ -43,10 +44,10 @@ const READY_CODES = new Set([0, 7, 10]);
 
 let sensor: PresageSensor | null = null;
 let latest: VitalsReading | null = null;
-let faceWatch: FaceWatch | null = null;
+let faceWatch: { stop(): void } | null = null;
 /** Latest SDK validation code is good enough to play. */
 let signalOk = false;
-/** A face is turned toward the screen (FaceWatch). */
+/** The player is facing the screen (HeadWatch, or FaceWatch as a fallback). */
 let facing = true;
 let faceOk = false;
 
@@ -99,18 +100,28 @@ async function startCamera(): Promise<void> {
   const preview = $<HTMLVideoElement>('preview');
   preview.srcObject = stream;
   void preview.play().catch(() => undefined);
-  // Looking away is detected on the device by Chromium's FaceDetector,
-  // because the SDK's status doesn't change when the player turns away.
-  if (faceWatchSupported()) {
-    faceWatch = new FaceWatch(stream, (present) => {
-      console.info(`[face] ${present ? 'facing the screen' : 'looked away'}`);
-      facing = present;
-      refreshReady(lastSdkMessage);
-      round?.onFace(present, Date.now());
-    });
-    faceWatch.start();
-  } else {
-    console.warn('[app] FaceDetector unavailable: looking away will not be detected.');
+  // Looking away: the SDK's status doesn't change when the player turns away,
+  // so head direction comes from MediaPipe Face Landmarker (on this device).
+  // If it can't load, fall back to Chromium's FaceDetector, which at least
+  // notices leaving the frame.
+  const onFacing = (present: boolean) => {
+    console.info(`[face] ${present ? 'facing the screen' : 'looked away'}`);
+    facing = present;
+    refreshReady(lastSdkMessage);
+    round?.onFace(present, Date.now());
+  };
+  try {
+    const hw = await HeadWatch.create(stream, onFacing, (n) => window.dontBlink.loadAsset(n));
+    hw.start();
+    faceWatch = hw;
+    console.info('[app] head tracking on (MediaPipe)');
+  } catch (err) {
+    console.warn('[app] head tracking unavailable, using face presence only:', err);
+    if (faceWatchSupported()) {
+      const fw = new FaceWatch(stream, onFacing);
+      fw.start();
+      faceWatch = fw;
+    }
   }
   await s.start();
 }

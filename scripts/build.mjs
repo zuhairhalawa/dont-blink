@@ -40,6 +40,15 @@ async function buildApp(outDir, rendererEntry, htmlFile, cssFile) {
 
 await buildApp(src('dist/app'), src('src/renderer/app.ts'), src('src/renderer/index.html'), src('src/renderer/style.css'));
 
+// Head tracking: MediaPipe's WASM runtime and the face model, served to the
+// page by the main process (see 'load-asset' in src/main/main.ts).
+fs.mkdirSync(src('dist/app/mediapipe'), { recursive: true });
+fs.mkdirSync(src('dist/app/models'), { recursive: true });
+for (const f of ['vision_wasm_internal.js', 'vision_wasm_internal.wasm']) {
+  fs.copyFileSync(src('node_modules/@mediapipe/tasks-vision/wasm', f), src('dist/app/mediapipe', f));
+}
+fs.copyFileSync(src('assets/models/face_landmarker.task'), src('dist/app/models/face_landmarker.task'));
+
 if (process.argv.includes('--probe')) {
   // The probe page loads probe.js; keep that name.
   await buildApp(src('dist/probe'), src('src/probe.ts'), src('src/probe.html'), null);

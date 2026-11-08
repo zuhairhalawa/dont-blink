@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta http-equiv="Content-Security-Policy"
-    content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; worker-src blob:; img-src 'self' data: blob:; media-src 'self' blob:" />
+    content="default-src 'self'; script-src 'self' blob: 'wasm-unsafe-eval'; style-src 'self' 'unsafe-inline'; worker-src blob:; img-src 'self' data: blob:; media-src 'self' blob:; connect-src 'self' blob:" />
   <title>Don't Blink</title>
   <link rel="stylesheet" href="style.css" />
 </head>
@@ -21,7 +21,7 @@
       <h2>Before the lights go out</h2>
       <ul class="points">
         <li><strong>The camera watches your eyes.</strong> The game uses your webcam to see when you blink or look away, and to read your pulse and breathing rate.</li>
-        <li><strong>Video stays on this computer.</strong> The Presage SmartSpectra SDK processes the video on this device, and the face check that notices when you turn away runs on this device too. Frames are never uploaded or saved. The SDK goes online only to check the API key.</li>
+        <li><strong>Video stays on this computer.</strong> The Presage SmartSpectra SDK processes the video on this device, and the head check that notices when you turn away (Google MediaPipe) runs on this device too. Frames are never uploaded or saved. The SDK goes online only to check the API key.</li>
         <li><strong>One photo, kept only in memory.</strong> When the Watcher gets closest, the game takes one still of your face for the end card. It and your blinks and pulse stay in memory for the round and are gone when you close the game. Nothing is saved unless you choose Save image.</li>
         <li><strong>A game, not a medical device.</strong> The numbers are estimates for fun. Expect flickering light and one sudden loud sound.</li>
       </ul>

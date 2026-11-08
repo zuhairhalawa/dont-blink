@@ -89,8 +89,8 @@ function registerSecurityHandlers(): void {
       responseHeaders: {
         ...details.responseHeaders,
         'Content-Security-Policy': [
-          "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; " +
-            "worker-src blob:; img-src 'self' data: blob:; media-src 'self' blob:; connect-src 'self';",
+          "default-src 'self'; script-src 'self' blob: 'wasm-unsafe-eval'; style-src 'self' 'unsafe-inline'; " +
+            "worker-src blob:; img-src 'self' data: blob:; media-src 'self' blob:; connect-src 'self' blob:;",
         ],
       },
     });
@@ -100,6 +100,20 @@ function registerSecurityHandlers(): void {
 function registerIpcHandlers(presageApiKey: string): void {
   // The renderer asks once, when the camera starts. Never logged.
   ipcMain.handle('get-presage-api-key', () => presageApiKey);
+
+  // Head tracking (MediaPipe Face Landmarker) needs its WASM runtime and model.
+  // The sandboxed page can't fetch file:// URLs, so the main process reads
+  // these three named files from the build folder and nothing else.
+  const ASSETS: Record<string, string> = {
+    'mediapipe-loader': 'mediapipe/vision_wasm_internal.js',
+    'mediapipe-wasm': 'mediapipe/vision_wasm_internal.wasm',
+    'face-model': 'models/face_landmarker.task',
+  };
+  ipcMain.handle('load-asset', async (_event, name: unknown) => {
+    const rel = typeof name === 'string' ? ASSETS[name] : undefined;
+    if (!rel) throw new Error('Unknown asset');
+    return new Uint8Array(await fs.promises.readFile(path.join(__dirname, rel)));
+  });
 
   // Save the end card. The renderer sends a PNG data URL; nothing is written
   // unless the player picks a location.
