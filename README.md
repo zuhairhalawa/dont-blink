@@ -8,7 +8,7 @@ Your blinks, pulse and breathing are read from an ordinary webcam by the [Presag
 
 ## How to play
 
-1. Agree to the consent screen, then wait for **Signal good**.
+1. Agree to the consent screen. On the get-ready screen, choose whether to **read your pulse and breathing** (on by default). With it on, sit back so your **shoulders and upper chest are in view**: Presage needs them for your pulse, and Begin unlocks once your pulse is read (usually about 20 seconds). With it off, only your blinks are read and you can start straight away.
 2. Click **Begin** and look at the screen during the 3-second intro, while it learns how you sit.
 3. Find the Watcher in your room, and survive 60 seconds:
    - Every blink lets it move one step closer.
@@ -42,6 +42,8 @@ Presage integration lives in [`kit/vitals/PresageSensor.ts`](kit/vitals/PresageS
 These measurements shaped the design:
 - **Presage blink timing.** Each blink Presage reports lasts 130–180 ms, and the event arrives about 100–150 ms after the eyes close. In a cued test it caught every deliberate blink. Fast natural flutters can slip past, and a long eye closure is not reported as a blink. That's why MediaPipe's eye scores were added for eyes held shut: in one round they caught 19 closures, against 3 blinks from Presage.
 - **Looking away.** Presage's validation status stayed on "chest not visible" even when the player left the frame, so it couldn't be used for looking away. Head direction comes from MediaPipe instead.
+- **Framing for pulse.** Presage gave blinks but no pulse while it reported "chest not visible" (sitting close to a laptop). Sitting back so the shoulders were in view, the first pulse came at about 20 seconds. So with pulse on, the game waits for full framing and a first pulse before the round can start.
+- **CPU headroom.** With full-screen canvas effects and MediaPipe running often, the SDK reported a processing failure about every 11 seconds and no pulse came through. Drawing at 30 fps on a 1280-px canvas and slowing the trackers fixed it. The occasional failure that remains is restarted automatically within about 2 seconds.
 - **Partial readings.** Pulse and breathing rates arrive in separate SDK events, so the game keeps the latest of each (`kit/signal/holdLatest.ts`).
 - **SDK errors.** Every SDK `error` is classified (`kit/vitals/errorPolicy.ts`). Fatal ones stop the camera and show a plain message; retryable ones are logged and play continues.
 
@@ -82,7 +84,7 @@ npm run build
 npm start
 ```
 
-The first pulse reading takes 20–40 seconds while the SDK warms up. You can begin before it arrives.
+With pulse reading on, sit back so your shoulders are in view; the first pulse takes about 20 seconds, and Begin waits for it.
 
 ### If Electron doesn't start after `npm install`
 

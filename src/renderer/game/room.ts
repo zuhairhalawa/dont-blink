@@ -183,42 +183,6 @@ export function drawSprite(ctx: CanvasRenderingContext2D, v: RoomView, p: Placem
 let room: HTMLCanvasElement | null = null;
 let cut: HTMLCanvasElement | null = null;
 let tmp: HTMLCanvasElement | null = null;
-/** An ellipse in pixels. */
-export interface Ellipse { cx: number; cy: number; rx: number; ry: number }
-
-/**
- * The area to blur when the player hides their face: an ellipse a good deal
- * larger than the tracked face (hair, ears, and some slack for movement
- * between tracker updates), clamped to the picture.
- */
-export function faceBlurArea(face: ScreenFace, w: number, h: number): Ellipse {
-  const rx = Math.min(w / 2, face.w * w * 1.1);
-  const ry = Math.min(h / 2, face.h * h * 0.95);
-  return { cx: face.cx * w, cy: (face.cy - face.h * 0.08) * h, rx, ry };
-}
-
-/** Blur the inside of an ellipse on a canvas, in place. */
-function blurEllipse(g: CanvasRenderingContext2D, e: Ellipse, strength: number): void {
-  const m = strength * 2;
-  const sx = Math.max(0, Math.floor(e.cx - e.rx - m));
-  const sy = Math.max(0, Math.floor(e.cy - e.ry - m));
-  const sw = Math.min(g.canvas.width, Math.ceil(e.cx + e.rx + m)) - sx;
-  const sh = Math.min(g.canvas.height, Math.ceil(e.cy + e.ry + m)) - sy;
-  if (sw <= 0 || sh <= 0) return;
-  tmp = canvasOf(tmp, sw, sh);
-  const t = tmp.getContext('2d')!;
-  t.clearRect(0, 0, sw, sh);
-  t.drawImage(g.canvas, sx, sy, sw, sh, 0, 0, sw, sh);
-  g.save();
-  g.beginPath();
-  g.ellipse(e.cx, e.cy, e.rx, e.ry, 0, 0, Math.PI * 2);
-  g.clip();
-  g.filter = `blur(${strength}px)`;
-  g.drawImage(tmp, sx, sy);
-  g.drawImage(tmp, sx, sy);
-  g.restore();
-}
-
 /** Blur a whole canvas in place (used when the face can't be located). */
 function blurAll(g: CanvasRenderingContext2D, strength: number): void {
   const { width: w, height: h } = g.canvas;
@@ -233,6 +197,7 @@ function blurAll(g: CanvasRenderingContext2D, strength: number): void {
 }
 
 let sil: HTMLCanvasElement | null = null;
+let grown: HTMLCanvasElement | null = null;
 
 /** The player's shape from the person mask, filled with a soft near-black. */
 function silhouette(mask: HTMLCanvasElement, w: number, h: number): HTMLCanvasElement {
@@ -240,11 +205,15 @@ function silhouette(mask: HTMLCanvasElement, w: number, h: number): HTMLCanvasEl
   const g = sil.getContext('2d')!;
   g.globalCompositeOperation = 'source-over';
   g.clearRect(0, 0, w, h);
-  g.save();
-  // Slightly soft and slightly enlarged edges, so hair and ears stay covered.
-  g.filter = 'blur(3px)';
-  drawCoverMirrored(g, mask, mask.width, mask.height, w, h);
-  g.restore();
+  // Grow the mask by a pixel in every direction at its own small size (cheap),
+  // so hair and ears stay covered; scaling it up keeps the edge soft.
+  grown = canvasOf(grown, mask.width, mask.height);
+  const m = grown.getContext('2d')!;
+  m.clearRect(0, 0, mask.width, mask.height);
+  for (const [ox, oy] of [[0, 0], [1, 0], [-1, 0], [0, 1], [0, -1], [1, 1], [-1, -1], [1, -1], [-1, 1]] as const) {
+    m.drawImage(mask, ox, oy);
+  }
+  drawCoverMirrored(g, grown, mask.width, mask.height, w, h);
   g.globalCompositeOperation = 'source-in';
   const grad = g.createLinearGradient(0, 0, 0, h);
   grad.addColorStop(0, '#1a1614');
@@ -255,19 +224,6 @@ function silhouette(mask: HTMLCanvasElement, w: number, h: number): HTMLCanvasEl
   return sil;
 }
 
-/**
- * Privacy mode: hide the player's face in a layer. With a tracked face, the
- * face area is blurred; without one, the whole layer is, so a lost face never
- * shows.
- */
-function hideFaceIn(g: CanvasRenderingContext2D, face: ScreenFace | null, w: number, h: number): void {
-  if (face) {
-    const area = faceBlurArea(face, w, h);
-    blurEllipse(g, area, Math.max(18, area.rx / 4));
-  } else {
-    blurAll(g, Math.max(24, w / 50));
-  }
-}
 
 
 function canvasOf(c: HTMLCanvasElement | null, w: number, h: number): HTMLCanvasElement {
@@ -324,12 +280,10 @@ export function drawRoom(ctx: CanvasRenderingContext2D, v: RoomView): void {
   // Privacy mode: the player becomes a soft dark silhouette, cut from the
   // person mask, so no face shows whichever way they turn (play-test: a
   // face-tracked blur looked like a grey bubble and leaked a profile). Under
-  // it, the face area is also blurred in case a mask edge is thin. Without a
-  // mask yet, the whole picture is blurred.
+  // a mask yet, the whole picture is blurred.
   let shadow: HTMLCanvasElement | null = null;
   if (v.hideFace) {
     if (v.mask) {
-      hideFaceIn(r, v.face, w, h);
       shadow = silhouette(v.mask, w, h);
     } else {
       blurAll(r, Math.max(28, w / 40));
@@ -353,9 +307,10 @@ export function drawRoom(ctx: CanvasRenderingContext2D, v: RoomView): void {
     r.fillRect(p.fx - p.s * 0.45, p.footY - p.s * 0.12, p.s * 0.9, p.s * 0.24);
   }
   r.save();
-  // Distance shading: darker and softer far away, sharp and lit up close.
+  // Distance shading: darker far away, lit up close. (No per-frame blur: full-
+  // screen canvas blurs starved the Presage SDK of CPU.)
   const near = Math.max(0, Math.min(1, (4.2 - p.depth) / 3.2));
-  r.filter = `blur(${(1.1 - near * 0.8).toFixed(2)}px) brightness(${(0.6 + near * 0.45).toFixed(2)})`;
+  r.filter = `brightness(${(0.6 + near * 0.45).toFixed(2)})`;
   // A faint breathing sway, so it looks alive while it waits.
   const q = lunging ? p : {
     ...p,

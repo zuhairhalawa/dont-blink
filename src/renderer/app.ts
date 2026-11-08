@@ -54,6 +54,8 @@ let personMask: PersonMask | null = null;
 let camVideo: HTMLVideoElement | null = null;
 /** Photo-real Watcher images, loaded once at startup if they exist. */
 let sprites: Sprites = {};
+/** Last time the pulse was written to the log (test evidence, every 5 s). */
+let lastPulseLog = 0;
 /** Privacy mode: blur the player's face in everything the game draws. */
 let hideFace = false;
 
@@ -77,39 +79,56 @@ let signalOk = false;
 let facing = true;
 let faceOk = false;
 
-/** Update the get-ready hint and the Begin button from both signals. */
+/** Update the get-ready hint and the Begin button. */
 function refreshReady(sdkMessage: string): void {
   // Head direction is learned again when the round starts, so it does not
-  // gate the Begin button.
-  faceOk = signalOk;
+  // gate the Begin button. With pulse reading on, Begin waits for the pulse.
+  const pulseReady = !vitalsOn || latest?.pulseRate != null;
+  faceOk = signalOk && pulseReady;
   const el = $('ready-hint');
-  el.textContent = faceOk ? 'Signal good. You can begin.' : sdkMessage;
+  el.textContent = !signalOk
+    ? sdkMessage
+    : pulseReady
+      ? 'Signal good. You can begin.'
+      : 'Signal good. Finding your pulse; Begin unlocks when it is read.';
   el.dataset['ok'] = String(faceOk);
   $<HTMLButtonElement>('btn-begin').disabled = !faceOk;
 }
 let lastSdkMessage = 'Starting the camera…';
+/** Read pulse and breathing too (the ready-screen switch). Blinks are always read. */
+let vitalsOn = true;
+/** The camera stream, kept while the SDK is restarted for a mode change. */
+let camStream: MediaStream | null = null;
 
-async function startCamera(): Promise<void> {
+/** Create, wire and start the Presage sensor on the camera stream. */
+async function startSensor(stream: MediaStream): Promise<void> {
   const apiKey = await window.dontBlink.getPresageApiKey();
-  const stream = await navigator.mediaDevices.getUserMedia({
-    video: { width: 1280, height: 720, frameRate: 30 },
-  });
-  const s = new PresageSensor(apiKey, stream, getConsentRecord()?.telemetry === true);
+  const s = new PresageSensor(apiKey, stream, { telemetry: getConsentRecord()?.telemetry === true, vitals: vitalsOn });
   sensor = s;
+  $('ready-pulse').textContent = vitalsOn
+    ? 'Reading your pulse. This takes 20 to 40 seconds.'
+    : 'Pulse and breathing are off. Only your blinks are read.';
 
   s.on('hint', ({ code, message }) => {
-    // Blinks only need the face. "Chest not visible" (7) and "camera
-    // adjusting" (10) affect breathing, not blinks, so they don't block play.
-    signalOk = READY_CODES.has(code);
-    lastSdkMessage = message;
-    refreshReady(message);
+    // Blinks only need the face, so "chest not visible" (7) and "camera
+    // adjusting" (10) are fine without pulse reading. Pulse needs the face and
+    // upper chest in view: in tests the SDK gave no pulse while it reported 7.
+    signalOk = vitalsOn ? code === 0 : READY_CODES.has(code);
+    lastSdkMessage = vitalsOn && code === 7 ? 'Sit back a little so your shoulders and chest are in view (needed for your pulse).' : message;
+    refreshReady(lastSdkMessage);
   });
 
   s.on('reading', (r) => {
+    const hadPulse = latest?.pulseRate != null;
     latest = r;
+    if (r.pulseRate !== null && Date.now() - lastPulseLog > 5000) {
+      lastPulseLog = Date.now();
+      console.info('[pulse] ' + Math.round(r.pulseRate));
+    }
     if (r.pulseRate !== null) {
       $('ready-pulse').textContent = `Pulse ${Math.round(r.pulseRate)} bpm`;
     }
+    if (hadPulse !== (r.pulseRate !== null)) refreshReady(lastSdkMessage);
     if (round) round.onReading(r);
   });
 
@@ -128,6 +147,29 @@ async function startCamera(): Promise<void> {
     $('error').hidden = false;
   });
 
+  refreshReady(lastSdkMessage);
+  await s.start();
+}
+
+/** Switch pulse and breathing on or off: restart the SDK with the new metrics, keeping the camera. */
+async function setVitals(on: boolean): Promise<void> {
+  if (on === vitalsOn) return;
+  vitalsOn = on;
+  const old = sensor;
+  sensor = null;
+  latest = null;
+  signalOk = false;
+  refreshReady('Restarting…');
+  if (old) await old.stop(true);
+  if (camStream) await startSensor(camStream);
+}
+
+async function startCamera(): Promise<void> {
+  const stream = await navigator.mediaDevices.getUserMedia({
+    video: { width: 1280, height: 720, frameRate: 30 },
+  });
+  camStream = stream;
+
   const preview = $<HTMLVideoElement>('preview');
   preview.srcObject = stream;
   void preview.play().catch(() => undefined);
@@ -141,7 +183,10 @@ async function startCamera(): Promise<void> {
     refreshReady(lastSdkMessage);
     round?.onFace(present, Date.now());
   };
+  const noTracking = new URLSearchParams(location.search).has('notrack');
+  if (noTracking) console.warn('[app] test mode: MediaPipe trackers off');
   try {
+    if (noTracking) throw new Error('tracking off for this test');
     const hw = await HeadWatch.create(stream, onFacing, (n) => window.dontBlink.loadAsset(n));
     hw.start();
     faceWatch = hw;
@@ -170,18 +215,20 @@ async function startCamera(): Promise<void> {
   camVideo.srcObject = stream;
   void camVideo.play().catch(() => undefined);
   try {
+    if (noTracking) throw new Error('tracking off for this test');
     personMask = await PersonMask.create(camVideo, (n) => window.dontBlink.loadAsset(n));
     personMask.start();
     console.info('[app] person mask on (MediaPipe)');
   } catch (err) {
     console.warn('[app] person mask unavailable; the Watcher will be drawn over you:', err);
   }
-  await s.start();
+  await startSensor(stream);
 }
 
 async function stopCamera(): Promise<void> {
   const s = sensor;
   sensor = null;
+  camStream = null;
   latest = null;
   faceOk = false;
   signalOk = false;
@@ -218,6 +265,7 @@ class Round {
   private endAt: number | null = null;
   private caughtAt: number | null = null;
   private lastBeat = 0;
+  private lastDraw = 0;
   private done = false;
   private moves = 0;
   private closestShown = 0;
@@ -227,6 +275,7 @@ class Round {
 
   start(): void {
     show('play');
+    (document.querySelector('.hud-pulse') as HTMLElement).hidden = !vitalsOn;
     this.resize();
     window.addEventListener('resize', this.resize);
     this.audio.start();
@@ -280,9 +329,11 @@ class Round {
   }
 
   private readonly resize = (): void => {
-    const dpr = Math.min(window.devicePixelRatio || 1, 2);
-    this.canvas.width = Math.floor(window.innerWidth * dpr);
-    this.canvas.height = Math.floor(window.innerHeight * dpr);
+    // At most 1280 px wide (the webcam picture's width): a larger canvas costs
+    // CPU the Presage SDK needs.
+    const scale = Math.min(window.devicePixelRatio || 1, 1280 / window.innerWidth);
+    this.canvas.width = Math.floor(window.innerWidth * scale);
+    this.canvas.height = Math.floor(window.innerHeight * scale);
   };
 
   private readonly frame = (t: number): void => {
@@ -366,7 +417,13 @@ class Round {
       mouth,
     };
     const light = t < this.bulbDipUntil ? 0.06 : this.game.phase === 'survived' ? 0.6 : 1;
-    if (camVideo && camVideo.readyState >= 2) {
+    // Draw at most 30 times a second (the camera's own rate); the game logic
+    // above still runs every frame. Halves the drawing work the SDK competes with.
+    const draw = t - this.lastDraw >= 30;
+    if (draw) this.lastDraw = t;
+    if (!draw) {
+      // Skip this frame's drawing.
+    } else if (camVideo && camVideo.readyState >= 2) {
       // It's in your room.
       drawRoom(this.ctx, { ...effects, w, h, video: camVideo, mask: personMask?.hasMask ? personMask.canvas : null,
         face: screenFace(w, h), bright: light, poseIndex: this.moves, sprites, hideFace });
@@ -374,7 +431,7 @@ class Round {
       // No camera picture yet: fall back to the corridor.
       drawFrame(this.ctx, { ...effects, w, h, bulb: light });
     }
-    this.updateHud(t, now);
+    if (draw) this.updateHud(t, now);
 
     if (this.endAt !== null && t >= this.endAt) {
       this.finish(true);
@@ -485,6 +542,9 @@ document.addEventListener('DOMContentLoaded', () => {
   });
 
   $('btn-begin').addEventListener('click', beginRound);
+  $<HTMLInputElement>('read-vitals').addEventListener('change', (e) => {
+    void setVitals((e.target as HTMLInputElement).checked);
+  });
   $<HTMLInputElement>('hide-face').addEventListener('change', (e) => {
     hideFace = (e.target as HTMLInputElement).checked;
     document.querySelector('.eye-frame')!.classList.toggle('face-hidden', hideFace);

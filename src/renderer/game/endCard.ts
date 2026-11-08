@@ -144,7 +144,7 @@ function drawPulseChart(ctx: CanvasRenderingContext2D, s: RoundSummary, samples:
   if (pts.length < 2) {
     ctx.fillStyle = C.dim;
     ctx.font = `400 24px ${TEXT}`;
-    ctx.fillText('No pulse reading yet. It takes about 20 s to start.', x, y + h / 2);
+    ctx.fillText('No pulse reading this round.', x, y + h / 2);
     return;
   }
 

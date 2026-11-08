@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { placeWatcher, faceToScreen, maskHeightAt, STEP_DEPTHS, faceBlurArea } from '../../src/renderer/game/room';
+import { placeWatcher, faceToScreen, maskHeightAt, STEP_DEPTHS } from '../../src/renderer/game/room';
 import { MASK_CENTRE_UP, MASK_HEIGHT } from '../../src/renderer/game/corridor';
 
 const W = 1600;
@@ -83,21 +83,5 @@ describe('faceToScreen', () => {
     const g = faceToScreen({ cx: 0.5, cy: 0.5, w: 0.2, h: 0.3 }, 1280, 720, 1200, 900);
     expect(g.cx).toBeCloseTo(0.5);
     expect(g.w).toBeGreaterThan(0.2);
-  });
-});
-
-describe('faceBlurArea (privacy mode)', () => {
-  it('covers more than the tracked face, centred on it', () => {
-    const f = { cx: 0.5, cy: 0.4, w: 0.2, h: 0.3 };
-    const e = faceBlurArea(f, 1600, 900);
-    expect(e.cx).toBeCloseTo(800);
-    expect(e.rx * 2).toBeGreaterThan(f.w * 1600);
-    expect(e.ry * 2).toBeGreaterThan(f.h * 900);
-  });
-
-  it('never grows beyond the picture', () => {
-    const e = faceBlurArea({ cx: 0.5, cy: 0.5, w: 1.5, h: 1.5 }, 1600, 900);
-    expect(e.rx).toBeLessThanOrEqual(800);
-    expect(e.ry).toBeLessThanOrEqual(450);
   });
 });

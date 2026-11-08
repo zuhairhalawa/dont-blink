@@ -6,7 +6,7 @@
  * chance each pixel belongs to the person, ready to cut the player out of the
  * camera image so things can be drawn behind them.
  *
- * Runs about 12 times a second; drawing reuses the latest mask.
+ * Runs about 8 times a second; drawing reuses the latest mask.
  */
 
 import { ImageSegmenter } from '@mediapipe/tasks-vision';
@@ -25,17 +25,15 @@ export class PersonMask {
 
   static async create(video: HTMLVideoElement, loadAsset: LoadAsset): Promise<PersonMask> {
     const [files, model] = await Promise.all([visionFileset(loadAsset), loadAsset('segment-model')]);
-    // GPU (WebGL) first, to leave the CPU to the Presage SDK; CPU if that fails.
+    // CPU: on the GPU, reading results back every frame stalled the page and
+    // the Presage SDK failed every ~10 s in a play-test.
     const make = (delegate: 'GPU' | 'CPU') => ImageSegmenter.createFromOptions(files, {
       baseOptions: { modelAssetBuffer: model, delegate },
       runningMode: 'VIDEO',
       outputConfidenceMasks: true,
       outputCategoryMask: false,
     });
-    const segmenter = await make('GPU').catch((err: unknown) => {
-      console.warn('[PersonMask] GPU unavailable, using CPU:', err);
-      return make('CPU');
-    });
+    const segmenter = await make('CPU');
     return new PersonMask(segmenter, video);
   }
 
@@ -44,7 +42,7 @@ export class PersonMask {
     return this.ready;
   }
 
-  start(intervalMs = 85): void {
+  start(intervalMs = 125): void {
     if (this.timer !== null) return;
     this.timer = window.setInterval(() => this.update(), intervalMs);
   }

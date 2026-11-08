@@ -67,13 +67,17 @@ export class PresageSensor extends TinyEmitter<PresageSensorEvents> {
   /** Times of recent recoveries, to give up if the SDK keeps failing. */
   private recoveries: number[] = [];
 
-  constructor(apiKey: string, stream: MediaStream, telemetry: boolean) {
+  /**
+   * @param opts.vitals  Also read pulse and breathing. Off means blinks only,
+   *                     which is much lighter for the SDK.
+   */
+  constructor(apiKey: string, stream: MediaStream, opts: { telemetry: boolean; vitals: boolean }) {
     super();
     this.stream = stream;
     this.sdk = new SmartSpectraSDK({
       apiKey,
-      requestedMetrics: [...faceMetrics, ...cardioMetrics, ...breathingMetrics],
-      enableTelemetry: telemetry,
+      requestedMetrics: opts.vitals ? [...faceMetrics, ...cardioMetrics, ...breathingMetrics] : [...faceMetrics],
+      enableTelemetry: opts.telemetry,
     });
     this.sdk.useMediaStream(stream);
     this.wire();
@@ -87,8 +91,11 @@ export class PresageSensor extends TinyEmitter<PresageSensorEvents> {
     await this.sdk.start();
   }
 
-  /** Stop the SDK and turn the camera off. Safe to call more than once. */
-  async stop(): Promise<void> {
+  /**
+   * Stop the SDK and, unless keepCamera is set, turn the camera off.
+   * Safe to call more than once.
+   */
+  async stop(keepCamera = false): Promise<void> {
     if (this.stopped) return;
     this.stopped = true;
     try {
@@ -96,7 +103,7 @@ export class PresageSensor extends TinyEmitter<PresageSensorEvents> {
     } catch (err) {
       console.warn('[PresageSensor] stop failed:', err);
     }
-    for (const t of this.stream.getTracks()) t.stop();
+    if (!keepCamera) for (const t of this.stream.getTracks()) t.stop();
   }
 
   private wire(): void {
@@ -114,8 +121,13 @@ export class PresageSensor extends TinyEmitter<PresageSensorEvents> {
       }
     });
 
+    let lastCode = -1;
     this.sdk.on('validationStatus', (code: number) => {
       const c = Number(code);
+      if (c !== lastCode) {
+        lastCode = c;
+        console.info(`[presage] status ${c}: ${hintFor(c)}`);
+      }
       this.emit('hint', { code: c, message: hintFor(c) });
     });
 
@@ -134,6 +146,7 @@ export class PresageSensor extends TinyEmitter<PresageSensorEvents> {
 
     // ProcessingStatus.kError (5): the pipeline has stopped; rebuild it.
     this.sdk.on('processingStatus', (status: number) => {
+      console.info(`[presage] processing ${Number(status)}`);
       if (Number(status) === 5) void this.recover();
     });
   }

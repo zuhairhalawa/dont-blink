@@ -49,7 +49,8 @@ export class HeadWatch {
   static async create(stream: MediaStream, onChange: (facing: boolean) => void,
     loadAsset: LoadAsset): Promise<HeadWatch> {
     const [files, model] = await Promise.all([visionFileset(loadAsset), loadAsset('face-model')]);
-    // GPU (WebGL) first, to leave the CPU to the Presage SDK; CPU if that fails.
+    // CPU: on the GPU, reading results back every frame stalled the page and
+    // the Presage SDK failed every ~10 s in a play-test.
     const make = (delegate: 'GPU' | 'CPU') => FaceLandmarker.createFromOptions(
       files,
       {
@@ -60,10 +61,7 @@ export class HeadWatch {
         outputFacialTransformationMatrixes: true,
       },
     );
-    const landmarker = await make('GPU').catch((err: unknown) => {
-      console.warn('[HeadWatch] GPU unavailable, using CPU:', err);
-      return make('CPU');
-    });
+    const landmarker = await make('CPU');
     return new HeadWatch(landmarker, stream, onChange);
   }
 
@@ -86,8 +84,11 @@ export class HeadWatch {
     return this.filter.present;
   }
 
-  /** Check about fifteen times a second, enough to see short eye closures. */
-  start(intervalMs = 66): void {
+  /**
+   * Check ten times a second: enough for eyes held shut (quick blinks come from
+   * Presage), and light enough to leave the SDK the CPU it needs.
+   */
+  start(intervalMs = 100): void {
     if (this.timer !== null) return;
     this.timer = window.setInterval(() => this.sample(), intervalMs);
   }

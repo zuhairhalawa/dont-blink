@@ -48,7 +48,11 @@ app.whenReady().then(() => {
   app.exit(1);
 });
 
-app.on('window-all-closed', () => app.quit());
+app.on('window-all-closed', () => {
+  app.quit();
+  // If a native SDK callback keeps the process alive, exit anyway.
+  setTimeout(() => app.exit(0), 3000).unref();
+});
 
 function createWindow(): BrowserWindow {
   const win = new BrowserWindow({
@@ -88,7 +92,11 @@ function createWindow(): BrowserWindow {
     });
   });
 
-  void win.loadFile(path.join(__dirname, 'index.html'));
+  // Test-only: --no-tracking runs without the MediaPipe trackers.
+  const query: Record<string, string> = process.argv.includes('--no-tracking') ? { notrack: '1' } : {};
+  const metricsArg = process.argv.find((x) => x.startsWith('--metrics='));
+  if (metricsArg) query['metrics'] = metricsArg.slice('--metrics='.length);
+  void win.loadFile(path.join(__dirname, 'index.html'), { query });
   return win;
 }
 

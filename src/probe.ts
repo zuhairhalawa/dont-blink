@@ -14,7 +14,7 @@
  * Every event is logged as one JSON line on the console for the test script.
  */
 
-import { SmartSpectraSDK, faceMetrics, cardioMetrics } from '@smartspectra/node-sdk/renderer';
+import { SmartSpectraSDK, faceMetrics, cardioMetrics, breathingMetrics } from '@smartspectra/node-sdk/renderer';
 import { decodeMetrics } from '@smartspectra/node-sdk/messages';
 
 // MediaPipe face-mesh eye landmark indices: p1..p6 for each eye.
@@ -100,7 +100,8 @@ async function main(): Promise<void> {
 
   const sdk = new SmartSpectraSDK({
     apiKey,
-    requestedMetrics: [...faceMetrics, ...cardioMetrics],
+    // ?metrics=heart (pulse + breathing), all (face + pulse + breathing), or the default (face + pulse).
+    requestedMetrics: (() => { const m = new URLSearchParams(location.search).get('metrics'); log('metrics', { m }); return m === 'heart' ? [...cardioMetrics, ...breathingMetrics] : m === 'all' ? [...faceMetrics, ...cardioMetrics, ...breathingMetrics] : [...faceMetrics, ...cardioMetrics]; })(),
     enableTelemetry: false,
   });
   sdk.useMediaStream(stream);
@@ -116,6 +117,8 @@ async function main(): Promise<void> {
   sdk.on('metrics', (buf: Uint8Array) => {
     const now = performance.timeOrigin + performance.now();
     const m = decodeMetrics(buf);
+    const pr = m.cardio?.pulseRate;
+    if (pr && pr.length) log('pulse', { v: Math.round(pr[pr.length - 1]!.value ?? 0) });
     const face = m.face;
     if (!face) return;
 
