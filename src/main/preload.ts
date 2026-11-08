@@ -22,6 +22,9 @@ contextBridge.exposeInMainWorld('dontBlink', {
   readyToClose(): void {
     ipcRenderer.send('ready-to-close');
   },
+  saveVideo(bytes: Uint8Array, ext: 'mp4' | 'webm'): Promise<{ ok: boolean; path?: string; error?: string }> {
+    return ipcRenderer.invoke('save-video', bytes, ext) as Promise<{ ok: boolean; path?: string; error?: string }>;
+  },
   savePng(dataUrl: string): Promise<{ ok: boolean; path?: string; error?: string }> {
     return ipcRenderer.invoke('save-png', dataUrl) as Promise<{ ok: boolean; path?: string; error?: string }>;
   },

@@ -24,6 +24,7 @@ import {
 import { drawFrame, poseFor, POSES } from './game/corridor';
 import { drawRoom, faceToScreen, type ScreenFace } from './game/room';
 import { loadSprites, type Sprites } from './game/sprites';
+import { RoundRecorder, drawRecordingFrame } from './recorder';
 import { GameAudio } from './game/sound';
 import { summarize, type Sample } from './game/summary';
 import { drawEndCard } from './game/endCard';
@@ -58,6 +59,16 @@ let sprites: Sprites = {};
 let lastPulseLog = 0;
 /** Privacy mode: blur the player's face in everything the game draws. */
 let hideFace = false;
+/** Record the next round as a video (the ready-screen switch). */
+let recordRound = false;
+
+/** Hand a finished recording to the main process to save. */
+async function saveRecording(blob: Blob, ext: 'mp4' | 'webm'): Promise<void> {
+  const status = $('save-status');
+  status.textContent = 'Saving the round video…';
+  const res = await window.dontBlink.saveVideo(new Uint8Array(await blob.arrayBuffer()), ext);
+  status.textContent = res.ok ? `Video saved to ${res.path}` : res.error ? `Video not saved: ${res.error}` : 'Video not saved.';
+}
 
 /** Show the eyes as open or closed on the play screen. */
 function showEyes(closed: boolean): void {
@@ -271,6 +282,7 @@ class Round {
   private closestShown = 0;
   private lungeFrom = 0;
   private nextBlackoutAt = Infinity;
+  private rec: RoundRecorder | null = null;
   private photo: HTMLCanvasElement | null = null;
 
   start(): void {
@@ -279,6 +291,16 @@ class Round {
     this.resize();
     window.addEventListener('resize', this.resize);
     this.audio.start();
+    if (recordRound) {
+      try {
+        // Same shape as the game canvas, at most 1280 wide.
+        const k = Math.min(1, 1280 / this.canvas.width);
+        this.rec = new RoundRecorder(Math.round(this.canvas.width * k / 2) * 2, Math.round(this.canvas.height * k / 2) * 2, this.audio.stream);
+        console.info('[rec] recording the round as ' + this.rec.ext);
+      } catch (err) {
+        console.warn('[rec] could not start recording:', err);
+      }
+    }
     this.introStart = performance.now();
     // Learn the resting head position during the intro, while the player looks at the screen.
     headWatch?.recalibrate();
@@ -431,7 +453,20 @@ class Round {
       // No camera picture yet: fall back to the corridor.
       drawFrame(this.ctx, { ...effects, w, h, bulb: light });
     }
-    if (draw) this.updateHud(t, now);
+    if (draw) {
+      this.updateHud(t, now);
+      if (this.rec) {
+        drawRecordingFrame(this.rec.canvas, this.canvas, {
+          secondsLeft: secondsLeft(this.game, now),
+          bpm: latest?.pulseRate != null ? Math.round(latest.pulseRate) : null,
+          showPulse: vitalsOn,
+          eyesClosed: $('hud-eye').dataset['closed'] === 'true',
+          blinks: this.game.blinks,
+          stare: stareProgress(this.game, now),
+          message: $('hud-message').textContent ?? '',
+        });
+      }
+    }
 
     if (this.endAt !== null && t >= this.endAt) {
       this.finish(true);
@@ -491,11 +526,34 @@ class Round {
     this.done = true;
     cancelAnimationFrame(this.raf);
     window.removeEventListener('resize', this.resize);
-    void this.audio.close();
     round = null;
+    const rec = this.rec;
+    this.rec = null;
     if (!showCard) {
+      void this.audio.close();
+      if (rec) void rec.stop();
       show('consent');
       return;
+    }
+    if (rec) {
+      // Record a few seconds of the end card, centred on black, then save.
+      const card = $<HTMLCanvasElement>('card');
+      const out = rec.canvas.getContext('2d')!;
+      const until = performance.now() + 4500;
+      const paint = () => {
+        out.fillStyle = '#000';
+        out.fillRect(0, 0, rec.canvas.width, rec.canvas.height);
+        const k = Math.min(rec.canvas.width / card.width, rec.canvas.height / card.height) * 0.92;
+        const cw = card.width * k;
+        const ch = card.height * k;
+        out.drawImage(card, (rec.canvas.width - cw) / 2, (rec.canvas.height - ch) / 2, cw, ch);
+        if (performance.now() < until) setTimeout(paint, 33);
+        else void rec.stop().then((b) => saveRecording(b, rec.ext)).finally(() => void this.audio.close());
+      };
+      // After the end card has been drawn.
+      setTimeout(paint, 0);
+    } else {
+      void this.audio.close();
     }
     const summary = summarize(this.game, this.samples);
     drawEndCard($<HTMLCanvasElement>('card'), summary, this.samples, this.photo);
@@ -544,6 +602,9 @@ document.addEventListener('DOMContentLoaded', () => {
   $('btn-begin').addEventListener('click', beginRound);
   $<HTMLInputElement>('read-vitals').addEventListener('change', (e) => {
     void setVitals((e.target as HTMLInputElement).checked);
+  });
+  $<HTMLInputElement>('record-round').addEventListener('change', (e) => {
+    recordRound = (e.target as HTMLInputElement).checked;
   });
   $<HTMLInputElement>('hide-face').addEventListener('change', (e) => {
     hideFace = (e.target as HTMLInputElement).checked;

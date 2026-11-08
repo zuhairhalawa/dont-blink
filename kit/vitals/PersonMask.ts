@@ -6,7 +6,7 @@
  * chance each pixel belongs to the person, ready to cut the player out of the
  * camera image so things can be drawn behind them.
  *
- * Runs about 8 times a second; drawing reuses the latest mask.
+ * Runs five times a second; drawing reuses the latest mask.
  */
 
 import { ImageSegmenter } from '@mediapipe/tasks-vision';
@@ -42,7 +42,7 @@ export class PersonMask {
     return this.ready;
   }
 
-  start(intervalMs = 125): void {
+  start(intervalMs = 200): void {
     if (this.timer !== null) return;
     this.timer = window.setInterval(() => this.update(), intervalMs);
   }

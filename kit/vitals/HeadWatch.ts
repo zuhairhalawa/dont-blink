@@ -85,10 +85,10 @@ export class HeadWatch {
   }
 
   /**
-   * Check ten times a second: enough for eyes held shut (quick blinks come from
+   * Check about seven times a second: enough for eyes held shut (quick blinks come from
    * Presage), and light enough to leave the SDK the CPU it needs.
    */
-  start(intervalMs = 100): void {
+  start(intervalMs = 150): void {
     if (this.timer !== null) return;
     this.timer = window.setInterval(() => this.sample(), intervalMs);
   }

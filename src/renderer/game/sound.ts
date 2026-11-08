@@ -23,11 +23,19 @@ export class GameAudio {
   private heartTimer: number | null = null;
   private bpm: number | null = null;
   private dread = 0;
+  /** The game's sound as a stream, for the round recorder. */
+  private readonly tap: MediaStreamAudioDestinationNode;
+
+  get stream(): MediaStream {
+    return this.tap.stream;
+  }
 
   constructor() {
     this.master = this.ctx.createGain();
     this.master.gain.value = 0.6;
     this.master.connect(this.ctx.destination);
+    this.tap = this.ctx.createMediaStreamDestination();
+    this.master.connect(this.tap);
     this.heartGain = this.ctx.createGain();
     this.heartGain.gain.value = 0.5;
     this.heartGain.connect(this.master);

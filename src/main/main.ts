@@ -18,7 +18,7 @@ import 'dotenv/config';
 
 import path from 'node:path';
 import fs from 'node:fs';
-import { app, BrowserWindow, ipcMain, dialog, session } from 'electron';
+import { app, BrowserWindow, ipcMain, dialog, session, desktopCapturer } from 'electron';
 import { bindSmartSpectraIpc } from '@smartspectra/node-sdk/main';
 
 const PRESAGE_API_KEY = process.env['PRESAGE_API_KEY'];
@@ -85,10 +85,13 @@ function createWindow(): BrowserWindow {
     closing = true;
     e.preventDefault();
     win.webContents.send('app-closing');
-    const force = setTimeout(() => win.destroy(), 2000);
+    const force = setTimeout(() => app.exit(0), 2000);
     ipcMain.once('ready-to-close', () => {
       clearTimeout(force);
-      win.destroy();
+      // Exit straight away: letting Electron tear down normally gave the SDK's
+      // native code a chance to call back into JavaScript during shutdown,
+      // which crashed the process (FATAL napi_throw).
+      app.exit(0);
     });
   });
 
@@ -96,6 +99,17 @@ function createWindow(): BrowserWindow {
   const query: Record<string, string> = process.argv.includes('--no-tracking') ? { notrack: '1' } : {};
   const metricsArg = process.argv.find((x) => x.startsWith('--metrics='));
   if (metricsArg) query['metrics'] = metricsArg.slice('--metrics='.length);
+  // Round recorder: getDisplayMedia() in the page always captures this window
+  // and nothing else (no picker, no other windows or screens).
+  session.defaultSession.setDisplayMediaRequestHandler((_req, callback) => {
+    desktopCapturer.getSources({ types: ['window'] }).then((sources) => {
+      // Match by title: the id from getMediaSourceId() did not match exactly.
+      const mine = sources.find((s) => s.id === win.getMediaSourceId())
+        ?? sources.find((s) => s.name === win.getTitle());
+      callback(mine ? { video: mine } : {});
+    }).catch(() => callback({}));
+  });
+
   void win.loadFile(path.join(__dirname, 'index.html'), { query });
   return win;
 }
@@ -105,7 +119,7 @@ function registerSecurityHandlers(): void {
 
   // Camera only, and only for our own local page.
   ses.setPermissionRequestHandler((_wc, permission, callback, details) => {
-    callback(permission === 'media' && details.requestingUrl.startsWith('file://'));
+    callback((permission === 'media' || permission === 'display-capture') && details.requestingUrl.startsWith('file://'));
   });
 
   ses.webRequest.onHeadersReceived((details, respond) => {
@@ -144,6 +158,24 @@ function registerIpcHandlers(presageApiKey: string): void {
 
   // Save the end card. The renderer sends a PNG data URL; nothing is written
   // unless the player picks a location.
+  // Save a recorded round. Nothing is written unless the player picks a place.
+  ipcMain.handle('save-video', async (_event, bytes: unknown, ext: unknown) => {
+    if (!(bytes instanceof Uint8Array)) return { ok: false, error: 'Not a video.' };
+    const e = ext === 'mp4' ? 'mp4' : 'webm';
+    const result = await dialog.showSaveDialog({
+      title: 'Save the round video',
+      defaultPath: `dont-blink-round-${new Date().toISOString().slice(0, 19).replace(/[:T]/g, '-')}.${e}`,
+      filters: [{ name: e === 'mp4' ? 'MP4 video' : 'WebM video', extensions: [e] }],
+    });
+    if (result.canceled || !result.filePath) return { ok: false };
+    try {
+      await fs.promises.writeFile(result.filePath, bytes);
+      return { ok: true, path: result.filePath };
+    } catch (err) {
+      return { ok: false, error: err instanceof Error ? err.message : String(err) };
+    }
+  });
+
   ipcMain.handle('save-png', async (_event, dataUrl: unknown) => {
     if (typeof dataUrl !== 'string' || !dataUrl.startsWith('data:image/png;base64,')) {
       return { ok: false, error: 'Not a PNG image.' };
