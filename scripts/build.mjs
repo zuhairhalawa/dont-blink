@@ -47,7 +47,9 @@ fs.mkdirSync(src('dist/app/models'), { recursive: true });
 for (const f of ['vision_wasm_internal.js', 'vision_wasm_internal.wasm']) {
   fs.copyFileSync(src('node_modules/@mediapipe/tasks-vision/wasm', f), src('dist/app/mediapipe', f));
 }
-fs.copyFileSync(src('assets/models/face_landmarker.task'), src('dist/app/models/face_landmarker.task'));
+for (const f of ['face_landmarker.task', 'selfie_segmenter.tflite']) {
+  fs.copyFileSync(src('assets/models', f), src('dist/app/models', f));
+}
 
 if (process.argv.includes('--probe')) {
   // The probe page loads probe.js; keep that name.

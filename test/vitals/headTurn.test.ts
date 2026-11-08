@@ -62,3 +62,16 @@ describe('head judge', () => {
     expect(j.rest!.yaw).toBeCloseTo(0.52);
   });
 });
+
+describe('head judge reset', () => {
+  it('forgets the resting position and learns it again', () => {
+    const j = createHeadJudge(3);
+    for (let i = 0; i < 3; i++) j.push({ yaw: 0.9, pitch: 0.5 });
+    expect(j.rest?.yaw).toBeCloseTo(0.9);
+    j.reset();
+    expect(j.rest).toBeNull();
+    for (let i = 0; i < 3; i++) j.push({ yaw: 0.5, pitch: 0.5 });
+    expect(j.rest?.yaw).toBeCloseTo(0.5);
+    expect(j.push({ yaw: 0.52, pitch: 0.5 })).toBe(true);
+  });
+});

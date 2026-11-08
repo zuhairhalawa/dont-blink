@@ -218,13 +218,30 @@ function drawWatcher(ctx: CanvasRenderingContext2D, z: number, bulb: number,
   const fx = px(0, z);
   const footY = py(FLOOR_Y, z);
   const l = lightAt(z, bulb);
-  const X = (x: number) => fx + x * s;
   // In the final lunge it bends down so the mask ends up level with your eyes.
   const lean = Math.max(0, Math.min(1, (1.8 - z) / (1.8 - 0.4))) * 0.36;
-  const Y = (y: number) => footY + (y - FLOOR_Y + lean) * s;
+  // Up close the pale mask catches all the light there is.
+  const lm = Math.min(1, Math.max(0.1 + l * 1.3, z < 1.5 ? 0.85 : 0));
+  drawFigure(ctx, fx, footY + lean * s, s, Math.min(1, l * 1.4), lm, pose, mouth);
+}
+
+/** Height of the Watcher from its feet to the top of its mask, in its own units. */
+export const FIGURE_HEIGHT = 1.5;
+/** Distance from the feet up to the centre of the mask, in its own units. */
+export const MASK_CENTRE_UP = 1.33;
+/** Height of the mask, in its own units. */
+export const MASK_HEIGHT = 0.34;
+
+/**
+ * Draw the Watcher with its feet at (fx, footY), `s` pixels per unit.
+ * `lit` (0-1) is the light on its body; `lm` (0-1) on its mask.
+ */
+export function drawFigure(ctx: CanvasRenderingContext2D, fx: number, footY: number, s: number,
+  lit: number, lm: number, pose: Pose, mouth: number): void {
+  const X = (x: number) => fx + x * s;
+  const Y = (y: number) => footY + (y - FLOOR_Y) * s;
 
   // Light comes from above: shoulders catch it, the hem is lost in the dark.
-  const lit = Math.min(1, l * 1.4);
   const grad = ctx.createLinearGradient(0, Y(-0.1), 0, Y(1.0));
   grad.addColorStop(0, `rgb(${(16 + 70 * lit) | 0},${(13 + 50 * lit) | 0},${(11 + 30 * lit) | 0})`);
   grad.addColorStop(1, 'rgb(6,5,4)');
@@ -255,8 +272,6 @@ function drawWatcher(ctx: CanvasRenderingContext2D, z: number, bulb: number,
   ctx.fillRect(X(-0.035 + pose.headX / 2), Y(-0.2 + pose.hunch), 0.07 * s, 0.13 * s);
 
   // Mask, tilted slightly as if listening.
-  // Up close the pale mask catches all the light there is.
-  const lm = Math.min(1, Math.max(0.1 + l * 1.3, z < 1.5 ? 0.85 : 0));
   ctx.save();
   ctx.translate(X(0.005 + pose.headX), Y(-0.33 + pose.hunch));
   ctx.rotate(pose.tilt);
@@ -385,7 +400,7 @@ function drawBulb(ctx: CanvasRenderingContext2D, x: number, y: number, ceilY: nu
   ctx.fill();
 }
 
-function drawGrain(ctx: CanvasRenderingContext2D, w: number, h: number): void {
+export function drawGrain(ctx: CanvasRenderingContext2D, w: number, h: number): void {
   ctx.fillStyle = 'rgba(255,240,220,0.05)';
   for (let i = 0; i < 260; i++) ctx.fillRect(Math.random() * w, Math.random() * h, 2, 2);
   ctx.fillStyle = 'rgba(0,0,0,0.12)';
@@ -393,7 +408,7 @@ function drawGrain(ctx: CanvasRenderingContext2D, w: number, h: number): void {
 }
 
 /** Upper and lower eyelids closing toward the middle, with a warm inner glow. */
-function drawLids(ctx: CanvasRenderingContext2D, w: number, h: number, k: number): void {
+export function drawLids(ctx: CanvasRenderingContext2D, w: number, h: number, k: number): void {
   const reach = (h / 2) * Math.min(1, k) * 1.08;
   ctx.fillStyle = '#050304';
   // Upper lid: its lower edge curves down in the middle.

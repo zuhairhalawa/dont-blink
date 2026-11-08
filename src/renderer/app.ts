@@ -15,12 +15,14 @@ import { setConsent, getConsentRecord } from 'kit/consent/ConsentRecord';
 import { PresageSensor } from 'kit/vitals/PresageSensor';
 import { FaceWatch, faceWatchSupported } from 'kit/vitals/FaceWatch';
 import { HeadWatch } from 'kit/vitals/HeadWatch';
+import { PersonMask } from 'kit/vitals/PersonMask';
 import type { VitalsReading } from 'kit/vitals/types';
 import {
   createGame, startGame, onBlink, onFace, tick, secondsLeft, stareProgress,
   CAUGHT_STEP, type GameState,
 } from './game/rules';
 import { drawFrame, poseFor, POSES } from './game/corridor';
+import { drawRoom, faceToScreen, type ScreenFace } from './game/room';
 import { GameAudio } from './game/sound';
 import { summarize, type Sample } from './game/summary';
 import { drawEndCard } from './game/endCard';
@@ -45,6 +47,18 @@ const READY_CODES = new Set([0, 7, 10]);
 let sensor: PresageSensor | null = null;
 let latest: VitalsReading | null = null;
 let faceWatch: { stop(): void } | null = null;
+let headWatch: HeadWatch | null = null;
+let personMask: PersonMask | null = null;
+/** Hidden video of the camera stream: drawn as the room and used for the scare cam. */
+let camVideo: HTMLVideoElement | null = null;
+
+/** The player's face on screen (mirrored, normalised), if head tracking has one. */
+function screenFace(w: number, h: number): ScreenFace | null {
+  const box = headWatch?.faceBox;
+  const v = camVideo;
+  if (!box || !v || !v.videoWidth) return null;
+  return faceToScreen(box, v.videoWidth, v.videoHeight, w, h);
+}
 /** Latest SDK validation code is good enough to play. */
 let signalOk = false;
 /** The player is facing the screen (HeadWatch, or FaceWatch as a fallback). */
@@ -53,9 +67,11 @@ let faceOk = false;
 
 /** Update the get-ready hint and the Begin button from both signals. */
 function refreshReady(sdkMessage: string): void {
-  faceOk = signalOk && facing;
+  // Head direction is learned again when the round starts, so it does not
+  // gate the Begin button.
+  faceOk = signalOk;
   const el = $('ready-hint');
-  el.textContent = !facing ? 'Look at the screen.' : faceOk ? 'Signal good. You can begin.' : sdkMessage;
+  el.textContent = faceOk ? 'Signal good. You can begin.' : sdkMessage;
   el.dataset['ok'] = String(faceOk);
   $<HTMLButtonElement>('btn-begin').disabled = !faceOk;
 }
@@ -114,6 +130,7 @@ async function startCamera(): Promise<void> {
     const hw = await HeadWatch.create(stream, onFacing, (n) => window.dontBlink.loadAsset(n));
     hw.start();
     faceWatch = hw;
+    headWatch = hw;
     console.info('[app] head tracking on (MediaPipe)');
   } catch (err) {
     console.warn('[app] head tracking unavailable, using face presence only:', err);
@@ -122,6 +139,20 @@ async function startCamera(): Promise<void> {
       fw.start();
       faceWatch = fw;
     }
+  }
+  // The room: the camera picture is drawn as the play screen, with the
+  // player cut out by a person mask so the Watcher can stand behind them.
+  camVideo = document.createElement('video');
+  camVideo.muted = true;
+  camVideo.playsInline = true;
+  camVideo.srcObject = stream;
+  void camVideo.play().catch(() => undefined);
+  try {
+    personMask = await PersonMask.create(camVideo, (n) => window.dontBlink.loadAsset(n));
+    personMask.start();
+    console.info('[app] person mask on (MediaPipe)');
+  } catch (err) {
+    console.warn('[app] person mask unavailable; the Watcher will be drawn over you:', err);
   }
   await s.start();
 }
@@ -135,6 +166,11 @@ async function stopCamera(): Promise<void> {
   facing = true;
   faceWatch?.stop();
   faceWatch = null;
+  headWatch = null;
+  personMask?.stop();
+  personMask = null;
+  if (camVideo) camVideo.srcObject = null;
+  camVideo = null;
   $<HTMLVideoElement>('preview').srcObject = null;
   $<HTMLButtonElement>('btn-begin').disabled = true;
   if (s) await s.stop();
@@ -165,8 +201,6 @@ class Round {
   private closestShown = 0;
   private lungeFrom = 0;
   private nextBlackoutAt = Infinity;
-  /** Hidden video of the camera stream, used only for the scare-cam photo. */
-  private cam: HTMLVideoElement | null = null;
   private photo: HTMLCanvasElement | null = null;
 
   start(): void {
@@ -174,15 +208,10 @@ class Round {
     this.resize();
     window.addEventListener('resize', this.resize);
     this.audio.start();
-    if (sensor) {
-      this.cam = document.createElement('video');
-      this.cam.muted = true;
-      this.cam.playsInline = true;
-      this.cam.srcObject = sensor.mediaStream;
-      void this.cam.play().catch(() => undefined);
-    }
     this.introStart = performance.now();
-    $('hud-message').textContent = 'Keep your eyes open.';
+    // Learn the resting head position during the intro, while the player looks at the screen.
+    headWatch?.recalibrate();
+    $('hud-message').textContent = 'It is somewhere in your room. Keep your eyes open.';
     $('hud-tally').textContent = '';
     $('hud-time').textContent = '60';
     this.raf = requestAnimationFrame(this.frame);
@@ -292,19 +321,27 @@ class Round {
       step = this.lungeFrom + (CAUGHT_STEP - this.lungeFrom) * k * k;
       mouth = Math.min(1, sinceCaught / 320);
     }
-    drawFrame(this.ctx, {
-      w: this.canvas.width,
-      h: this.canvas.height,
+    const w = this.canvas.width;
+    const h = this.canvas.height;
+    const effects = {
       time: t,
       step,
       lids: this.lids,
-      bulb: t < this.bulbDipUntil ? 0.06 : this.game.phase === 'survived' ? 0.6 : 1,
       shake: sinceCaught !== null && sinceCaught < 800 ? 46 : 0,
       redWash: sinceCaught !== null && sinceCaught > 90 ? Math.max(0, 1 - sinceCaught / 1600) : 0,
       flash: sinceCaught !== null && sinceCaught < 70 ? 0.85 : 0,
       pose: sinceCaught !== null ? POSES[0]! : poseFor(this.moves),
       mouth,
-    });
+    };
+    const light = t < this.bulbDipUntil ? 0.06 : this.game.phase === 'survived' ? 0.6 : 1;
+    if (camVideo && camVideo.readyState >= 2) {
+      // It's in your room.
+      drawRoom(this.ctx, { ...effects, w, h, video: camVideo, mask: personMask?.hasMask ? personMask.canvas : null,
+        face: screenFace(w, h), bright: light });
+    } else {
+      // No camera picture yet: fall back to the corridor.
+      drawFrame(this.ctx, { ...effects, w, h, bulb: light });
+    }
     this.updateHud(t, now);
 
     if (this.endAt !== null && t >= this.endAt) {
@@ -325,17 +362,22 @@ class Round {
     void t;
   }
 
-  /** Grab one mirrored frame of the player's face into memory (never saved unless they choose Save image). */
+  /**
+   * Scare cam: one still of the player's room with the Watcher right behind
+   * their shoulder, kept in memory for the end card (saved only if they
+   * choose Save image).
+   */
   private snap(): void {
-    const v = this.cam;
+    const v = camVideo;
     if (!v || v.readyState < 2 || !v.videoWidth) return;
     const c = document.createElement('canvas');
-    c.width = 640;
-    c.height = Math.round((640 * v.videoHeight) / v.videoWidth);
-    const g = c.getContext('2d')!;
-    g.translate(c.width, 0);
-    g.scale(-1, 1);
-    g.drawImage(v, 0, 0, c.width, c.height);
+    c.width = 960;
+    c.height = Math.round((960 * v.videoHeight) / v.videoWidth);
+    drawRoom(c.getContext('2d')!, {
+      w: c.width, h: c.height, time: performance.now(), video: v,
+      mask: personMask?.hasMask ? personMask.canvas : null, face: screenFace(c.width, c.height),
+      step: CAUGHT_STEP - 1, lids: 0, bright: 1.15, shake: 0, redWash: 0, flash: 0, pose: poseFor(this.moves), mouth: 0,
+    });
     this.photo = c;
   }
 
@@ -361,10 +403,6 @@ class Round {
     window.removeEventListener('resize', this.resize);
     void this.audio.close();
     round = null;
-    if (this.cam) {
-      this.cam.srcObject = null;
-      this.cam = null;
-    }
     if (!showCard) {
       show('consent');
       return;

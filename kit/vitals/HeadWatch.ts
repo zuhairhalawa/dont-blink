@@ -18,19 +18,20 @@
 import { FaceLandmarker } from '@mediapipe/tasks-vision';
 import { headRatios, createHeadJudge } from './headTurn';
 import { createPresenceFilter } from './presence';
+import { visionFileset, type AssetName, type LoadAsset } from './mediapipeFiles';
 
-export type AssetName = 'mediapipe-loader' | 'mediapipe-wasm' | 'face-model';
+export type { AssetName };
 
-function blobUrl(bytes: Uint8Array, type: string): string {
-  return URL.createObjectURL(new Blob([bytes], { type }));
-}
+/** Where the face is in the camera image, normalised 0-1 (not mirrored). */
+export interface FaceBox { cx: number; cy: number; w: number; h: number }
 
 export class HeadWatch {
   private readonly video: HTMLVideoElement;
   private readonly judge = createHeadJudge();
-  private readonly filter = createPresenceFilter(400, 250);
+  private filter = createPresenceFilter(400, 250);
   private timer: number | null = null;
   private lastTs = 0;
+  private box: FaceBox | null = null;
 
   private constructor(private readonly landmarker: FaceLandmarker, stream: MediaStream,
     private readonly onChange: (facing: boolean) => void) {
@@ -43,14 +44,10 @@ export class HeadWatch {
 
   /** Load MediaPipe and the model, then watch `stream`. Rejects if loading fails. */
   static async create(stream: MediaStream, onChange: (facing: boolean) => void,
-    loadAsset: (name: AssetName) => Promise<Uint8Array>): Promise<HeadWatch> {
-    const [loader, wasm, model] = await Promise.all([
-      loadAsset('mediapipe-loader'),
-      loadAsset('mediapipe-wasm'),
-      loadAsset('face-model'),
-    ]);
+    loadAsset: LoadAsset): Promise<HeadWatch> {
+    const [files, model] = await Promise.all([visionFileset(loadAsset), loadAsset('face-model')]);
     const landmarker = await FaceLandmarker.createFromOptions(
-      { wasmLoaderPath: blobUrl(loader, 'text/javascript'), wasmBinaryPath: blobUrl(wasm, 'application/wasm') },
+      files,
       {
         baseOptions: { modelAssetBuffer: model, delegate: 'CPU' },
         runningMode: 'VIDEO',
@@ -58,6 +55,21 @@ export class HeadWatch {
       },
     );
     return new HeadWatch(landmarker, stream, onChange);
+  }
+
+  /** The latest face position, or null when no face is found. */
+  get faceBox(): FaceBox | null {
+    return this.box;
+  }
+
+  /**
+   * Learn the resting head position again (call while the player is looking
+   * at the screen, e.g. at the start of a round). Reports facing meanwhile.
+   */
+  recalibrate(): void {
+    this.judge.reset();
+    if (!this.filter.present) this.onChange(true);
+    this.filter = createPresenceFilter(400, 250);
   }
 
   get facing(): boolean {
@@ -84,6 +96,18 @@ export class HeadWatch {
     try {
       const res = this.landmarker.detectForVideo(this.video, ts);
       const lm = res.faceLandmarks[0];
+      if (lm && lm.length) {
+        let x0 = 1, x1 = 0, y0 = 1, y1 = 0;
+        for (const p of lm) {
+          if (p.x < x0) x0 = p.x;
+          if (p.x > x1) x1 = p.x;
+          if (p.y < y0) y0 = p.y;
+          if (p.y > y1) y1 = p.y;
+        }
+        this.box = { cx: (x0 + x1) / 2, cy: (y0 + y1) / 2, w: x1 - x0, h: y1 - y0 };
+      } else {
+        this.box = null;
+      }
       const facing = this.judge.push(lm ? headRatios(lm) : null);
       const change = this.filter.push(facing, ts);
       if (change !== null) this.onChange(change);

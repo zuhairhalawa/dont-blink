@@ -103,11 +103,12 @@ function registerIpcHandlers(presageApiKey: string): void {
 
   // Head tracking (MediaPipe Face Landmarker) needs its WASM runtime and model.
   // The sandboxed page can't fetch file:// URLs, so the main process reads
-  // these three named files from the build folder and nothing else.
+  // these named files from the build folder and nothing else.
   const ASSETS: Record<string, string> = {
     'mediapipe-loader': 'mediapipe/vision_wasm_internal.js',
     'mediapipe-wasm': 'mediapipe/vision_wasm_internal.wasm',
     'face-model': 'models/face_landmarker.task',
+    'segment-model': 'models/selfie_segmenter.tflite',
   };
   ipcMain.handle('load-asset', async (_event, name: unknown) => {
     const rel = typeof name === 'string' ? ASSETS[name] : undefined;

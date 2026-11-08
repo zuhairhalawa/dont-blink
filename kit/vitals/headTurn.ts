@@ -51,6 +51,8 @@ export interface HeadJudge {
   push(r: HeadRatios | null): boolean;
   /** Resting ratios learned so far, or null before calibration. */
   readonly rest: HeadRatios | null;
+  /** Forget the resting position and learn it again from the next frames. */
+  reset(): void;
 }
 
 /**
@@ -68,6 +70,11 @@ export function createHeadJudge(calibFrames = 15): HeadJudge {
   return {
     get rest() {
       return rest;
+    },
+    reset() {
+      rest = null;
+      yaws.length = 0;
+      pitches.length = 0;
     },
     push(r) {
       if (r === null) return false;
