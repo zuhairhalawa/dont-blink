@@ -35,7 +35,7 @@ Pictures are from rounds played with **Hide me** on, so the player appears as a 
 
    Save it as a PNG if you like.
 
-Recording or streaming? Turn on **Hide my face** on the get-ready screen to appear as a silhouette.
+Recording or streaming? Turn on **Hide me** on the get-ready screen to appear as a silhouette.
 
 ## What reads what
 
@@ -67,7 +67,7 @@ These measurements shaped the design:
 - **What goes online.** Presage's SDK contacts Presage to check the API key. It can also send Presage an anonymous per-session usage summary (no video, no readings), but only if you tick the box on the consent screen. It's off by default.
 - **Blocked usage report.** Google's MediaPipe library tries to send Google a usage report when it closes. The app's content security policy blocks it, so nothing is sent.
 - **One photo, in memory only.** When the Watcher gets closest, the game takes one still of your room for the end card. It stays in memory with your blinks and pulse, and is gone when you close the game. Nothing is written to disk unless you click **Save image**.
-- **Hide my face.** For recording or streaming, the get-ready screen has a **Hide my face** switch. It shows the player as a dark silhouette in everything the game draws (the end-card photo too) and blurs the framing preview, while blinks, pulse and head turns are still read from the clear camera. The silhouette comes from the person mask, so it covers the player whichever way they turn; until the mask is ready, the whole picture is blurred. An eye icon on the play screen shows each blink registering.
+- **Hide me.** For recording or streaming, the get-ready screen has a **Hide me** switch. It shows the player as a dark silhouette in everything the game draws (the end-card photo too) and blurs the framing preview, while blinks, pulse and head turns are still read from the clear camera. The silhouette comes from the person mask, so it covers the player whichever way they turn; until the mask is ready, the whole picture is blurred. An eye icon on the play screen shows each blink registering.
 - **No other services.** No AI service, analytics or account is used at runtime.
 
 ## Setup
