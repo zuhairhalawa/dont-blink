@@ -8,5 +8,3 @@
 export { DISCLAIMER_TEXT } from './disclaimer';
 
 // Live pulse + breathing readout with sparkline (AC-5.1–AC-5.6)
-export type { LiveReadoutHandle } from './LiveReadout';
-export { mountLiveReadout } from './LiveReadout';

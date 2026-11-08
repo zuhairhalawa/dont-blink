@@ -91,7 +91,7 @@ function scheduleCue(): void {
 }
 
 async function main(): Promise<void> {
-  const apiKey = await window.heartline.getPresageApiKey();
+  const apiKey = await window.dontBlink.getPresageApiKey();
   const stream = await navigator.mediaDevices.getUserMedia({
     video: { width: 1280, height: 720, frameRate: 30 },
   });

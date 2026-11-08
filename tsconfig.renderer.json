@@ -2,18 +2,19 @@
   "$schema": "https://json.schemastore.org/tsconfig",
   "extends": "./tsconfig.base.json",
   "compilerOptions": {
-    /* Browser: DOM types + bundler module resolution so package exports work */
-    "lib": ["ES2022", "DOM", "DOM.Iterable"],
+    "lib": [
+      "ES2022",
+      "DOM",
+      "DOM.Iterable"
+    ],
     "module": "ESNext",
     "moduleResolution": "bundler",
     "noEmit": true
   },
   "include": [
-    "kit/ui/**/*",
-    "kit/consent/**/*",
-    "kit/vitals/**/*",
-    "kit/signal/**/*",
-    "apps/scare-meter/renderer/**/*"
+    "src/renderer/**/*",
+    "src/probe.ts",
+    "kit/**/*"
   ],
   "exclude": [
     "node_modules",

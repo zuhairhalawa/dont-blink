@@ -1,225 +1,181 @@
 /**
- * apps/scare-meter/scene/sound.ts
+ * src/renderer/game/sound.ts
  *
- * Every sound in the scene is synthesised with the Web Audio API: rain, a
- * door creak, knocks, a low drone, a shriek and a door slam. There are no
- * audio files, so the kit ships without third-party assets.
+ * All game audio is synthesised with the Web Audio API; there are no audio
+ * files. Levels stay moderate: the scare comes from timing, not volume.
  *
- * Levels are kept moderate. The loudest moment (the shriek) peaks well below
- * full scale, so the scare comes from timing rather than volume.
+ *   - Room tone: a low mains hum from the bare bulb.
+ *   - Heartbeat: a "lub-dub" at the player's live pulse rate (from Presage),
+ *     louder as the Watcher gets closer.
+ *   - Dread drone: rises with the Watcher's distance.
+ *   - Move cue: a dull thud each time the Watcher moves during a blink.
+ *   - Shriek: the jump scare when you are caught.
+ *   - Release: a soft falling tone when you survive.
  */
 
-import type { CueKind } from './beats';
-
-export class SceneAudio {
-  private readonly ctx: AudioContext;
+export class GameAudio {
+  private readonly ctx = new AudioContext();
   private readonly master: GainNode;
   private readonly noise: AudioBuffer;
-  private rainGain: GainNode | null = null;
   private droneGain: GainNode | null = null;
-  private droneOscs: OscillatorNode[] = [];
-  private droneBase = 0;
+  private heartGain: GainNode;
+  private heartTimer: number | null = null;
+  private bpm: number | null = null;
+  private dread = 0;
 
   constructor() {
-    this.ctx = new AudioContext();
     this.master = this.ctx.createGain();
-    this.master.gain.value = 0.55;
+    this.master.gain.value = 0.6;
     this.master.connect(this.ctx.destination);
+    this.heartGain = this.ctx.createGain();
+    this.heartGain.gain.value = 0.5;
+    this.heartGain.connect(this.master);
     this.noise = this.makeNoise(2);
   }
 
-  /** Start the background rain. Call once when the scene starts. */
+  /** Start the room tone and the dread drone. Call from a user gesture. */
   start(): void {
     void this.ctx.resume();
-    const src = this.ctx.createBufferSource();
-    src.buffer = this.noise;
-    src.loop = true;
-    const band = this.ctx.createBiquadFilter();
-    band.type = 'bandpass';
-    band.frequency.value = 1800;
-    band.Q.value = 0.4;
-    const g = this.ctx.createGain();
-    g.gain.value = 0;
-    g.gain.linearRampToValueAtTime(0.18, this.ctx.currentTime + 3);
-    src.connect(band).connect(g).connect(this.master);
-    src.start();
-    this.rainGain = g;
-  }
-
-  /** Fire a one-shot cue. */
-  play(kind: CueKind): void {
-    switch (kind) {
-      case 'creak':   this.creak(); break;
-      case 'knock':   this.knock(); break;
-      case 'drone':   this.startDrone(); break;
-      case 'droneOff': this.stopDrone(0.1); break;
-      case 'shriek':  this.shriek(); break;
-      case 'flicker': this.buzz(); break;
-      case 'slam':    this.slam(); break;
-    }
-  }
-
-  /**
-   * Live tension (0-1) from the player's pulse: the drone gets louder and the
-   * rain quieter as tension rises.
-   */
-  setTension(t: number): void {
-    const now = this.ctx.currentTime;
-    if (this.droneGain) {
-      this.droneGain.gain.setTargetAtTime(this.droneBase * (0.5 + t), now, 0.4);
-    }
-    if (this.rainGain) {
-      this.rainGain.gain.setTargetAtTime(0.18 * (1 - 0.6 * t), now, 0.6);
-    }
-  }
-
-  /** Fade the rain out (used for the long silence). */
-  silenceRain(): void {
-    this.rainGain?.gain.setTargetAtTime(0, this.ctx.currentTime, 0.5);
-  }
-
-  /** Stop everything within about 200 ms and release the audio device. */
-  async close(): Promise<void> {
-    const now = this.ctx.currentTime;
-    this.master.gain.setTargetAtTime(0, now, 0.05);
-    await new Promise((r) => setTimeout(r, 200));
-    await this.ctx.close().catch(() => undefined);
-  }
-
-  // -------------------------------------------------------------------------
-  // Sounds
-  // -------------------------------------------------------------------------
-
-  /** A slow wooden creak: a buzzy tone sliding in pitch through a resonant filter. */
-  private creak(): void {
     const t = this.ctx.currentTime;
-    const osc = this.ctx.createOscillator();
-    osc.type = 'sawtooth';
-    osc.frequency.setValueAtTime(70, t);
-    osc.frequency.linearRampToValueAtTime(110, t + 0.6);
-    osc.frequency.linearRampToValueAtTime(85, t + 1.4);
-    // Tremolo gives the stick-slip texture of a hinge.
-    const trem = this.ctx.createOscillator();
-    trem.frequency.value = 23;
-    const tremGain = this.ctx.createGain();
-    tremGain.gain.value = 0.5;
-    const filt = this.ctx.createBiquadFilter();
-    filt.type = 'bandpass';
-    filt.frequency.value = 900;
-    filt.Q.value = 6;
-    const g = this.ctx.createGain();
-    g.gain.setValueAtTime(0, t);
-    g.gain.linearRampToValueAtTime(0.5, t + 0.15);
-    g.gain.linearRampToValueAtTime(0.35, t + 1.1);
-    g.gain.linearRampToValueAtTime(0, t + 1.6);
-    trem.connect(tremGain).connect(g.gain);
-    osc.connect(filt).connect(g).connect(this.master);
-    osc.start(t); trem.start(t);
-    osc.stop(t + 1.7); trem.stop(t + 1.7);
-  }
 
-  /** One knock on wood: a short low thump plus a click of noise. */
-  private knock(): void {
-    const t = this.ctx.currentTime;
-    const osc = this.ctx.createOscillator();
-    osc.type = 'sine';
-    osc.frequency.setValueAtTime(160, t);
-    osc.frequency.exponentialRampToValueAtTime(60, t + 0.12);
-    const g = this.ctx.createGain();
-    g.gain.setValueAtTime(0.9, t);
-    g.gain.exponentialRampToValueAtTime(0.001, t + 0.25);
-    osc.connect(g).connect(this.master);
-    osc.start(t); osc.stop(t + 0.3);
-    this.noiseBurst(t, 0.04, 2500, 0.5);
-  }
+    // Bulb hum: 50 Hz plus its harmonics, very quiet.
+    const hum = this.ctx.createGain();
+    hum.gain.value = 0.035;
+    for (const [f, a] of [[50, 1], [100, 0.5], [150, 0.25]] as const) {
+      const o = this.ctx.createOscillator();
+      o.frequency.value = f;
+      const g = this.ctx.createGain();
+      g.gain.value = a;
+      o.connect(g).connect(hum);
+      o.start(t);
+    }
+    hum.connect(this.master);
 
-  /** A low, beating drone that sits under the shadow beat. */
-  private startDrone(): void {
-    if (this.droneOscs.length > 0) return;
-    const t = this.ctx.currentTime;
-    const g = this.ctx.createGain();
-    g.gain.setValueAtTime(0, t);
-    this.droneBase = 0.22;
-    g.gain.linearRampToValueAtTime(this.droneBase * 0.5, t + 6);
+    // Dread drone: detuned low saws through a low-pass, silent until the
+    // Watcher moves.
     const lp = this.ctx.createBiquadFilter();
     lp.type = 'lowpass';
-    lp.frequency.value = 400;
-    for (const f of [55, 55.7, 82.4]) {
+    lp.frequency.value = 320;
+    const g = this.ctx.createGain();
+    g.gain.value = 0;
+    for (const f of [41.2, 41.6, 61.7]) {
       const o = this.ctx.createOscillator();
       o.type = 'sawtooth';
       o.frequency.value = f;
       o.connect(lp);
       o.start(t);
-      this.droneOscs.push(o);
     }
     lp.connect(g).connect(this.master);
     this.droneGain = g;
   }
 
-  private stopDrone(fadeSeconds: number): void {
-    if (!this.droneGain) return;
-    const t = this.ctx.currentTime;
-    this.droneGain.gain.setTargetAtTime(0, t, fadeSeconds);
-    for (const o of this.droneOscs) o.stop(t + fadeSeconds * 6);
-    this.droneOscs = [];
-    this.droneGain = null;
+  /** Live pulse in bpm, or null while it is not known yet. */
+  setPulse(bpm: number | null): void {
+    const was = this.bpm;
+    this.bpm = bpm;
+    if (bpm !== null && was === null) this.scheduleBeat();
   }
 
-  /** The jump scare: a harsh dissonant stab with a noise hit. */
-  private shriek(): void {
+  /** How close the Watcher is, 0 (far end) to 1 (at your face). */
+  setDread(d: number): void {
+    this.dread = Math.max(0, Math.min(1, d));
+    const now = this.ctx.currentTime;
+    this.droneGain?.gain.setTargetAtTime(0.02 + this.dread * 0.28, now, 0.25);
+    this.heartGain.gain.setTargetAtTime(0.25 + this.dread * 0.75, now, 0.25);
+  }
+
+  /** The Watcher moved while your eyes were closed. */
+  moved(): void {
+    const t = this.ctx.currentTime;
+    const o = this.ctx.createOscillator();
+    o.frequency.setValueAtTime(110, t);
+    o.frequency.exponentialRampToValueAtTime(38, t + 0.35);
+    const g = this.ctx.createGain();
+    g.gain.setValueAtTime(0.7, t);
+    g.gain.exponentialRampToValueAtTime(0.001, t + 0.5);
+    o.connect(g).connect(this.master);
+    o.start(t);
+    o.stop(t + 0.55);
+    this.noiseBurst(t, 0.12, 700, 0.35);
+  }
+
+  /** The Watcher backed off: a short electrical crackle as the bulb dips. */
+  retreated(): void {
+    this.noiseBurst(this.ctx.currentTime, 0.18, 3200, 0.18);
+  }
+
+  /** Jump scare. */
+  shriek(): void {
     const t = this.ctx.currentTime;
     const g = this.ctx.createGain();
     g.gain.setValueAtTime(0.0001, t);
-    g.gain.exponentialRampToValueAtTime(0.6, t + 0.02);
-    g.gain.exponentialRampToValueAtTime(0.001, t + 1.8);
-    for (const f of [740, 784, 1046, 1108]) {
+    g.gain.exponentialRampToValueAtTime(0.55, t + 0.015);
+    g.gain.exponentialRampToValueAtTime(0.001, t + 2);
+    const hp = this.ctx.createBiquadFilter();
+    hp.type = 'highpass';
+    hp.frequency.value = 450;
+    for (const f of [698, 740, 1046, 1109]) {
       const o = this.ctx.createOscillator();
       o.type = 'square';
       o.frequency.setValueAtTime(f, t);
-      o.frequency.linearRampToValueAtTime(f * 0.94, t + 1.8);
+      o.frequency.linearRampToValueAtTime(f * 0.92, t + 2);
       o.connect(g);
-      o.start(t); o.stop(t + 1.9);
+      o.start(t);
+      o.stop(t + 2.1);
     }
-    const hp = this.ctx.createBiquadFilter();
-    hp.type = 'highpass';
-    hp.frequency.value = 500;
     g.connect(hp).connect(this.master);
-    this.noiseBurst(t, 0.35, 3000, 0.7);
+    this.noiseBurst(t, 0.4, 2600, 0.6);
+    this.droneGain?.gain.setTargetAtTime(0, t + 0.3, 0.4);
   }
 
-  /** Electrical buzz while the lights flicker. */
-  private buzz(): void {
+  /** You survived: the drone falls away under a soft descending tone. */
+  release(): void {
     const t = this.ctx.currentTime;
-    const o = this.ctx.createOscillator();
-    o.type = 'sawtooth';
-    o.frequency.value = 100;
-    const g = this.ctx.createGain();
-    g.gain.setValueAtTime(0, t);
-    g.gain.linearRampToValueAtTime(0.05, t + 0.3);
-    g.gain.setValueAtTime(0.05, t + 3.6);
-    g.gain.linearRampToValueAtTime(0, t + 4);
-    o.connect(g).connect(this.master);
-    o.start(t); o.stop(t + 4.1);
-  }
-
-  /** The door slamming shut: a deep boom and a crack. */
-  private slam(): void {
-    const t = this.ctx.currentTime;
+    this.droneGain?.gain.setTargetAtTime(0, t, 0.8);
     const o = this.ctx.createOscillator();
     o.type = 'sine';
-    o.frequency.setValueAtTime(90, t);
-    o.frequency.exponentialRampToValueAtTime(30, t + 0.6);
+    o.frequency.setValueAtTime(392, t);
+    o.frequency.exponentialRampToValueAtTime(196, t + 2.5);
     const g = this.ctx.createGain();
-    g.gain.setValueAtTime(1, t);
-    g.gain.exponentialRampToValueAtTime(0.001, t + 1.2);
+    g.gain.setValueAtTime(0.0001, t);
+    g.gain.exponentialRampToValueAtTime(0.18, t + 0.3);
+    g.gain.exponentialRampToValueAtTime(0.001, t + 3);
     o.connect(g).connect(this.master);
-    o.start(t); o.stop(t + 1.3);
-    this.noiseBurst(t, 0.15, 1200, 0.9);
+    o.start(t);
+    o.stop(t + 3.1);
   }
 
-  // -------------------------------------------------------------------------
-  // Helpers
-  // -------------------------------------------------------------------------
+  async close(): Promise<void> {
+    if (this.heartTimer !== null) clearTimeout(this.heartTimer);
+    this.heartTimer = null;
+    this.master.gain.setTargetAtTime(0, this.ctx.currentTime, 0.05);
+    await new Promise((r) => setTimeout(r, 200));
+    await this.ctx.close().catch(() => undefined);
+  }
+
+  // ---------------------------------------------------------------------------
+
+  private scheduleBeat(): void {
+    if (this.bpm === null || this.ctx.state === 'closed') return;
+    this.thump(0, 1);
+    this.thump(0.16, 0.6);
+    const interval = 60_000 / Math.max(40, Math.min(180, this.bpm));
+    this.heartTimer = window.setTimeout(() => this.scheduleBeat(), interval);
+  }
+
+  private thump(delay: number, level: number): void {
+    const t = this.ctx.currentTime + delay;
+    const o = this.ctx.createOscillator();
+    o.frequency.setValueAtTime(70, t);
+    o.frequency.exponentialRampToValueAtTime(42, t + 0.12);
+    const g = this.ctx.createGain();
+    g.gain.setValueAtTime(0.0001, t);
+    g.gain.exponentialRampToValueAtTime(level, t + 0.012);
+    g.gain.exponentialRampToValueAtTime(0.001, t + 0.18);
+    o.connect(g).connect(this.heartGain);
+    o.start(t);
+    o.stop(t + 0.2);
+  }
 
   private noiseBurst(t: number, seconds: number, freq: number, level: number): void {
     const src = this.ctx.createBufferSource();

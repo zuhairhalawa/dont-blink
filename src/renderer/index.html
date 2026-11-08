@@ -1,0 +1,90 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta http-equiv="Content-Security-Policy"
+    content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; worker-src blob:; img-src 'self' data: blob:; media-src 'self' blob:" />
+  <title>Don't Blink</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <!-- Consent: nothing turns the camera on before this. -->
+  <section id="screen-consent" class="screen consent">
+    <h1 class="chart" aria-label="Don't Blink">
+      <span class="chart-1">DON'T</span>
+      <span class="chart-2">BLINK</span>
+      <span class="chart-3">IT ONLY MOVES</span>
+      <span class="chart-4">WHEN YOUR EYES CLOSE</span>
+    </h1>
+
+    <div class="consent-body">
+      <h2>Before the lights go out</h2>
+      <ul class="points">
+        <li><strong>The camera watches your eyes.</strong> The game uses your webcam to see when you blink or look away, and to read your pulse and breathing rate.</li>
+        <li><strong>Video stays on this computer.</strong> The Presage SmartSpectra SDK processes the video on this device. Frames are never uploaded or saved. The SDK goes online only to check the API key.</li>
+        <li><strong>Nothing is kept.</strong> Your blinks and pulse stay in memory for the round and are gone when you close the game. The end card is saved only if you choose Save image.</li>
+        <li><strong>A game, not a medical device.</strong> The numbers are estimates for fun. Expect flickering light and one sudden loud sound.</li>
+      </ul>
+      <label class="check">
+        <input type="checkbox" id="telemetry" />
+        <span>Send Presage an anonymous usage summary for each session (no video, no readings)</span>
+      </label>
+      <button id="btn-agree" class="btn primary" type="button">Turn on the camera</button>
+    </div>
+  </section>
+
+  <!-- Get ready: framing, signal and pulse warm-up. -->
+  <section id="screen-ready" class="screen ready" hidden>
+    <div class="eye-frame">
+      <video id="preview" muted playsinline aria-label="Your camera"></video>
+    </div>
+    <p id="ready-hint" class="hint" aria-live="polite">Starting the camera…</p>
+    <p id="ready-pulse" class="pulse-status" aria-live="polite">Reading your pulse. This takes 20 to 40 seconds.</p>
+    <ol class="rules">
+      <li>Every time you blink, it moves closer.</li>
+      <li>Look away and it moves twice.</li>
+      <li>Hold your stare for 8 seconds and it backs off.</li>
+    </ol>
+    <p class="goal">Last 60 seconds.</p>
+    <div class="actions">
+      <button id="btn-begin" class="btn primary" type="button" disabled>Begin</button>
+      <button id="btn-camera-off" class="btn quiet" type="button">Turn off the camera</button>
+    </div>
+  </section>
+
+  <!-- Play: full-screen corridor. -->
+  <section id="screen-play" class="screen play" hidden>
+    <canvas id="corridor"></canvas>
+    <div class="hud">
+      <p id="hud-time" class="hud-time" aria-label="Seconds left">60</p>
+      <p class="hud-pulse"><span id="hud-beat" class="beat" aria-hidden="true"></span><span id="hud-bpm">–</span> <small>bpm</small></p>
+      <p id="hud-message" class="hud-message" aria-live="assertive"></p>
+      <div class="hud-bottom">
+        <p class="tally" aria-label="Blinks"><span id="hud-tally"></span></p>
+        <div class="stare" aria-hidden="true"><div id="hud-stare" class="stare-fill"></div></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- End card. -->
+  <section id="screen-end" class="screen end" hidden>
+    <canvas id="card" class="card" aria-label="Your end card"></canvas>
+    <div class="actions">
+      <button id="btn-again" class="btn primary" type="button">Play again</button>
+      <button id="btn-save" class="btn" type="button">Save image</button>
+      <button id="btn-end-camera-off" class="btn quiet" type="button">Turn off the camera</button>
+    </div>
+    <p id="save-status" class="hint" aria-live="polite"></p>
+  </section>
+
+  <div id="error" class="modal" hidden role="alertdialog" aria-modal="true" aria-labelledby="error-title">
+    <div class="modal-box">
+      <h2 id="error-title">The camera session stopped</h2>
+      <p id="error-text"></p>
+      <button id="btn-error-close" class="btn primary" type="button">Back to the start</button>
+    </div>
+  </div>
+
+  <script src="renderer.js"></script>
+</body>
+</html>

@@ -1,0 +1,357 @@
+/* Don't Blink: a night corridor lit by one bare bulb, typeset like an eye chart.
+   Palette (each colour has one job):
+     wall  #1B1712  warm sepia ground
+     void  #000000  the far end of the corridor, the play screen
+     bulb  #E8B04A  light, and anything that helps you
+     bone  #E9E2D3  text and the Watcher's mask
+     vein  #B3122E  blinks and danger only
+   Type: Bahnschrift (Windows) for chart lines and numbers, Sitka Text for reading. */
+
+:root {
+  --wall: #1B1712;
+  --void: #000000;
+  --bulb: #E8B04A;
+  --bone: #E9E2D3;
+  --vein: #B3122E;
+  --dim: #9C9180;
+  --rule: #3a3128;
+  --display: "Bahnschrift", "DIN Alternate", "Arial Narrow", sans-serif;
+  --text: "Sitka Text", Georgia, serif;
+}
+
+* { box-sizing: border-box; }
+
+html, body {
+  margin: 0;
+  height: 100%;
+  background: var(--wall);
+  color: var(--bone);
+  font: 18px/1.6 var(--text);
+  overflow: hidden;
+}
+
+.screen {
+  position: fixed;
+  inset: 0;
+  overflow-y: auto;
+}
+
+.screen[hidden] { display: none; }
+
+h2 {
+  font: 600 1.5rem/1.2 var(--display);
+  letter-spacing: 0.01em;
+  margin: 0 0 1rem;
+}
+
+/* ---- Buttons ---- */
+
+.btn {
+  font: 600 1.05rem/1 var(--display);
+  letter-spacing: 0.02em;
+  color: var(--bone);
+  background: transparent;
+  border: 2px solid var(--rule);
+  border-radius: 999px;
+  padding: 0.85rem 1.6rem;
+  cursor: pointer;
+}
+
+.btn.primary {
+  background: var(--bulb);
+  border-color: var(--bulb);
+  color: #1B1712;
+}
+
+.btn.quiet {
+  border-color: transparent;
+  color: var(--dim);
+  text-decoration: underline;
+  text-underline-offset: 4px;
+}
+
+.btn:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+}
+
+.btn:focus-visible,
+input:focus-visible {
+  outline: 3px solid var(--bone);
+  outline-offset: 3px;
+}
+
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1rem;
+  align-items: center;
+}
+
+/* ---- Consent ---- */
+
+.consent {
+  display: grid;
+  grid-template-columns: minmax(320px, 1fr) minmax(360px, 34rem);
+  gap: 4rem;
+  align-items: center;
+  padding: 3rem 5vw;
+}
+
+/* The title is set like an eye chart: each line smaller than the last. */
+.chart {
+  margin: 0;
+  font-family: var(--display);
+  font-weight: 700;
+  line-height: 0.95;
+  text-align: center;
+  color: var(--bone);
+  display: grid;
+  gap: 0.35em;
+}
+
+.chart span { display: block; letter-spacing: 0.12em; }
+.chart-1 { font-size: clamp(4rem, 11vw, 9.5rem); letter-spacing: 0.06em; }
+.chart-2 { font-size: clamp(2.6rem, 7vw, 6rem); }
+.chart-3 { font-size: clamp(1.1rem, 2.4vw, 2rem); color: var(--dim); }
+.chart-4 { font-size: clamp(0.8rem, 1.5vw, 1.25rem); color: var(--dim); }
+
+.consent-body { max-width: 34rem; }
+
+.points {
+  list-style: none;
+  padding: 0;
+  margin: 0 0 1.5rem;
+}
+
+.points li {
+  padding: 0.7rem 0;
+  border-top: 1px solid var(--rule);
+}
+
+.points strong {
+  font-family: var(--display);
+  font-weight: 600;
+  color: var(--bone);
+}
+
+.check {
+  display: flex;
+  gap: 0.75rem;
+  align-items: flex-start;
+  margin: 0 0 1.75rem;
+  color: var(--dim);
+  font-size: 0.95rem;
+  cursor: pointer;
+}
+
+.check input {
+  width: 1.2rem;
+  height: 1.2rem;
+  margin-top: 0.25rem;
+  accent-color: var(--bulb);
+}
+
+/* ---- Get ready ---- */
+
+.ready {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.6rem;
+  padding: 2rem;
+  text-align: center;
+}
+
+/* The camera preview sits inside an almond-shaped eye. */
+.eye-frame {
+  width: min(560px, 80vw);
+  aspect-ratio: 16 / 9;
+  clip-path: ellipse(50% 38% at 50% 50%);
+  background: var(--void);
+}
+
+.eye-frame video {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  transform: scaleX(-1);
+  filter: sepia(0.35) contrast(1.05);
+}
+
+.hint {
+  font: 600 1.15rem/1.4 var(--display);
+  color: var(--dim);
+  margin: 0.5rem 0 0;
+  min-height: 1.6rem;
+}
+
+.hint[data-ok="true"] { color: var(--bulb); }
+
+.pulse-status {
+  margin: 0;
+  color: var(--dim);
+}
+
+.rules {
+  margin: 1.25rem 0 0.25rem;
+  padding: 0 0 0 1.4rem;
+  text-align: left;
+}
+
+.goal {
+  font: 600 1.3rem/1.2 var(--display);
+  margin: 0.5rem 0 1.25rem;
+}
+
+/* ---- Play ---- */
+
+.play { background: var(--void); overflow: hidden; }
+
+.play canvas {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+}
+
+.hud {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  padding: 1.5rem 2rem;
+}
+
+.hud-time {
+  position: absolute;
+  top: 1rem;
+  left: 2rem;
+  margin: 0;
+  font: 600 4rem/1 var(--display);
+  color: var(--bone);
+  font-variant-numeric: tabular-nums;
+}
+
+.hud-pulse {
+  position: absolute;
+  top: 1.4rem;
+  right: 2rem;
+  margin: 0;
+  font: 600 2.4rem/1 var(--display);
+  font-variant-numeric: tabular-nums;
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+}
+
+.hud-pulse small {
+  font-size: 1rem;
+  color: var(--dim);
+}
+
+/* Beats once per real heartbeat (driven from script). */
+.beat {
+  width: 0.6rem;
+  height: 0.6rem;
+  border-radius: 50%;
+  background: var(--vein);
+  opacity: 0.35;
+  transition: opacity 0.25s ease-out, transform 0.25s ease-out;
+}
+
+.beat.on {
+  opacity: 1;
+  transform: scale(1.5);
+  transition: none;
+}
+
+.hud-message {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 40%;
+  margin: 0;
+  text-align: center;
+  font: 600 2.2rem/1.2 var(--display);
+  color: var(--bone);
+  text-shadow: 0 0 24px #000;
+}
+
+.hud-bottom {
+  position: absolute;
+  left: 2rem;
+  right: 2rem;
+  bottom: 1.5rem;
+  display: flex;
+  align-items: center;
+  gap: 2rem;
+}
+
+/* One red mark per blink. */
+.tally {
+  margin: 0;
+  min-width: 10rem;
+  font: 700 2rem/1 var(--display);
+  color: var(--vein);
+  letter-spacing: 0.15em;
+}
+
+/* Fills while you hold your stare; at full, the Watcher backs off. */
+.stare {
+  flex: 1;
+  height: 4px;
+  background: rgba(233, 226, 211, 0.12);
+}
+
+.stare-fill {
+  height: 100%;
+  width: 0;
+  background: var(--bulb);
+}
+
+/* ---- End ---- */
+
+.end {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 1.5rem;
+  padding: 2rem;
+}
+
+.card {
+  width: min(1200px, 92vw);
+  height: auto;
+  aspect-ratio: 1200 / 630;
+  border: 1px solid var(--rule);
+}
+
+/* ---- Error ---- */
+
+.modal {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.8);
+  display: grid;
+  place-items: center;
+  z-index: 10;
+}
+
+.modal[hidden] { display: none; }
+
+.modal-box {
+  max-width: 32rem;
+  background: var(--wall);
+  border-top: 4px solid var(--vein);
+  padding: 2rem;
+}
+
+@media (max-width: 900px) {
+  .consent { grid-template-columns: 1fr; gap: 2rem; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .beat, .beat.on { transition: none; transform: none; }
+}

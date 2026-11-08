@@ -1,18 +1,16 @@
 {
-  "name": "heartline-kit",
+  "name": "dont-blink",
   "version": "0.1.0",
   "private": true,
-  "description": "Starter kit for desktop apps that react to live pulse and breathing via webcam",
+  "description": "A horror game you play with your eyes: blink and the Watcher moves closer. Blinks and pulse read from a webcam with the Presage SmartSpectra SDK.",
   "type": "commonjs",
-  "main": "dist/scare-meter/main.js",
+  "main": "dist/app/main.js",
   "scripts": {
     "build": "node scripts/build.mjs",
+    "probe": "node scripts/build.mjs --probe && electron dist/probe/main.js",
     "typecheck": "tsc -p tsconfig.node.json && tsc -p tsconfig.renderer.json && tsc -p tsconfig.test.json",
-    "start": "electron dist/scare-meter/main.js",
-    "demo": "electron dist/scare-meter/main.js --demo",
-    "test": "vitest run",
-    "test:watch": "vitest",
-    "test:coverage": "vitest run --coverage"
+    "start": "electron dist/app/main.js",
+    "test": "vitest run"
   },
   "dependencies": {
     "@smartspectra/node-sdk": "3.4.0",
@@ -20,7 +18,6 @@
   },
   "devDependencies": {
     "@types/node": "22.10.1",
-    "@vitest/coverage-v8": "2.1.8",
     "esbuild": "0.21.5",
     "electron": "33.2.1",
     "typescript": "5.7.2",
