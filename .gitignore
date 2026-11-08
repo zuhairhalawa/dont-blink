@@ -20,3 +20,6 @@ recordings/
 # Only the Watcher artwork may be committed as PNG.
 *.png
 !assets/watcher-src/watcher-*.png
+# README pictures: face-free frames only (silhouette rounds), checked by eye.
+!docs/media/*.png
+!docs/media/*.gif

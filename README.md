@@ -1,10 +1,23 @@
 # Don't Blink
 
+![The Watcher reaches toward the player, shown as a silhouette in their own room](docs/media/watcher.gif)
+
 A horror game you play with your eyes. Your webcam becomes a window into your own room, and something is standing in it. **It only moves when your eyes are closed.** Each time you blink it is closer, until it is right behind your shoulder.
 
 Your blinks, pulse and breathing are read from an ordinary webcam by the [Presage SmartSpectra SDK](https://smartspectra.presagetech.com/docs). Your real heartbeat sets the heartbeat you hear. No wearable is needed.
 
 > A game, not a medical device. The pulse and breathing numbers are estimates for fun. Expect flickering light and one sudden loud sound.
+
+<p>
+  <img src="docs/media/hero.png" width="49%" alt="The Watcher leaning in behind the player">
+  <img src="docs/media/reach.png" width="49%" alt="The Watcher reaching for the player, live pulse 88 bpm at top right">
+</p>
+<p>
+  <img src="docs/media/caught-card.png" width="49%" alt="CAUGHT end card: blinks, longest stare, peak pulse and the pulse chart with blinks marked">
+  <img src="docs/media/survived-card.png" width="49%" alt="SURVIVED end card">
+</p>
+
+Pictures are from rounds played with **Hide me** on, so the player appears as a silhouette.
 
 ## How to play
 
