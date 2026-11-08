@@ -12,6 +12,7 @@
 
 import { CAUGHT_STEP } from './rules';
 import { drawFigure, drawGrain, drawLids, MASK_CENTRE_UP, MASK_HEIGHT, type Pose } from './corridor';
+import type { Sprites, SpriteName } from './sprites';
 
 /** Face position on screen, normalised 0-1, already mirrored like the picture. */
 export interface ScreenFace { cx: number; cy: number; w: number; h: number }
@@ -85,7 +86,45 @@ export interface RoomView {
   redWash: number;
   flash: number;
   pose: Pose;
+  /** Which pose this is (moves so far), to pick a photo pose. */
+  poseIndex: number;
   mouth: number;
+  /** Photo-real Watcher images, if generated; otherwise it is drawn. */
+  sprites?: Sprites;
+}
+
+const FULL_BODY: SpriteName[] = ['watcher-stand', 'watcher-tilt', 'watcher-reach', 'watcher-hunch'];
+
+/**
+ * Draw a photo pose sized from the placement's mask height, or return false
+ * so the drawn Watcher is used. Heights are relative to the mask: a full-body
+ * photo is about 7.5 masks tall, the leaning shot about 3, the scream close-up 1.5.
+ */
+function drawSprite(ctx: CanvasRenderingContext2D, v: RoomView, p: Placement, lunging: boolean): boolean {
+  const sp = v.sprites;
+  if (!sp) return false;
+  const maskPx = p.s * MASK_HEIGHT;
+  const maskY = p.footY - MASK_CENTRE_UP * p.s;
+  let img: HTMLCanvasElement | undefined;
+  let height: number;
+  let top: number;
+  if (lunging) {
+    img = sp['watcher-scream'];
+    height = maskPx * 1.5;
+    top = maskY - height / 2;
+  } else if (v.step >= 5.5 && sp['watcher-lean']) {
+    img = sp['watcher-lean'];
+    height = maskPx * 3;
+    top = maskY - maskPx * 0.75;
+  } else {
+    img = sp[FULL_BODY[v.poseIndex % FULL_BODY.length]!] ?? sp['watcher-stand'];
+    height = maskPx * 7.5;
+    top = maskY - maskPx * 0.6;
+  }
+  if (!img) return false;
+  const width = (height * img.width) / img.height;
+  ctx.drawImage(img, p.fx - width / 2, top, width, height);
+  return true;
 }
 
 let room: HTMLCanvasElement | null = null;
@@ -155,7 +194,9 @@ export function drawRoom(ctx: CanvasRenderingContext2D, v: RoomView): void {
   r.save();
   r.filter = `blur(${Math.max(0.6, Math.min(2.2, p.s / 400))}px)`;
   r.globalAlpha = lunging ? 1 : 0.9;
-  drawFigure(r, p.fx, p.footY, p.s, 0.55, lunging ? 0.95 : 0.78, v.pose, v.mouth);
+  if (!drawSprite(r, v, p, lunging)) {
+    drawFigure(r, p.fx, p.footY, p.s, 0.55, lunging ? 0.95 : 0.78, v.pose, v.mouth);
+  }
   r.restore();
 
   // The player in front of it: cut out of the camera picture with the mask.

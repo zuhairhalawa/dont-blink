@@ -23,6 +23,7 @@ import {
 } from './game/rules';
 import { drawFrame, poseFor, POSES } from './game/corridor';
 import { drawRoom, faceToScreen, type ScreenFace } from './game/room';
+import { loadSprites, type Sprites } from './game/sprites';
 import { GameAudio } from './game/sound';
 import { summarize, type Sample } from './game/summary';
 import { drawEndCard } from './game/endCard';
@@ -51,6 +52,8 @@ let headWatch: HeadWatch | null = null;
 let personMask: PersonMask | null = null;
 /** Hidden video of the camera stream: drawn as the room and used for the scare cam. */
 let camVideo: HTMLVideoElement | null = null;
+/** Photo-real Watcher images, loaded once at startup if they exist. */
+let sprites: Sprites = {};
 
 /** The player's face on screen (mirrored, normalised), if head tracking has one. */
 function screenFace(w: number, h: number): ScreenFace | null {
@@ -353,7 +356,7 @@ class Round {
     if (camVideo && camVideo.readyState >= 2) {
       // It's in your room.
       drawRoom(this.ctx, { ...effects, w, h, video: camVideo, mask: personMask?.hasMask ? personMask.canvas : null,
-        face: screenFace(w, h), bright: light });
+        face: screenFace(w, h), bright: light, poseIndex: this.moves, sprites });
     } else {
       // No camera picture yet: fall back to the corridor.
       drawFrame(this.ctx, { ...effects, w, h, bulb: light });
@@ -393,6 +396,7 @@ class Round {
       w: c.width, h: c.height, time: performance.now(), video: v,
       mask: personMask?.hasMask ? personMask.canvas : null, face: screenFace(c.width, c.height),
       step: CAUGHT_STEP - 1, lids: 0, bright: 1.15, shake: 0, redWash: 0, flash: 0, pose: poseFor(this.moves), mouth: 0,
+      poseIndex: this.moves, sprites,
     });
     this.photo = c;
   }
@@ -445,6 +449,10 @@ function beginRound(): void {
 
 document.addEventListener('DOMContentLoaded', () => {
   show('consent');
+  void loadSprites((n) => window.dontBlink.loadAsset(n)).then((s) => {
+    sprites = s;
+    console.info(`[app] Watcher photos loaded: ${Object.keys(s).length}`);
+  });
 
   $('btn-agree').addEventListener('click', async () => {
     setConsent($<HTMLInputElement>('telemetry').checked);

@@ -109,6 +109,8 @@ function registerIpcHandlers(presageApiKey: string): void {
     'mediapipe-wasm': 'mediapipe/vision_wasm_internal.wasm',
     'face-model': 'models/face_landmarker.task',
     'segment-model': 'models/selfie_segmenter.tflite',
+    // Photo-real Watcher images, if generated (assets/watcher-src).
+    ...Object.fromEntries(['stand', 'tilt', 'reach', 'hunch', 'lean', 'scream'].map((p) => [`watcher-${p}`, `watcher/watcher-${p}.png`])),
   };
   ipcMain.handle('load-asset', async (_event, name: unknown) => {
     const rel = typeof name === 'string' ? ASSETS[name] : undefined;

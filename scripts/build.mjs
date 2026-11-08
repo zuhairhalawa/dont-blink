@@ -50,6 +50,11 @@ for (const f of ['vision_wasm_internal.js', 'vision_wasm_internal.wasm']) {
 for (const f of ['face_landmarker.task', 'selfie_segmenter.tflite']) {
   fs.copyFileSync(src('assets/models', f), src('dist/app/models', f));
 }
+// Photo-real Watcher images, when they have been generated.
+fs.mkdirSync(src('dist/app/watcher'), { recursive: true });
+for (const f of fs.readdirSync(src('assets/watcher-src')).filter((f) => /^watcher-[a-z]+\.png$/.test(f))) {
+  fs.copyFileSync(src('assets/watcher-src', f), src('dist/app/watcher', f));
+}
 
 if (process.argv.includes('--probe')) {
   // The probe page loads probe.js; keep that name.

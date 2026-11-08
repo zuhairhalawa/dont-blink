@@ -13,7 +13,7 @@ contextBridge.exposeInMainWorld('dontBlink', {
   getPresageApiKey(): Promise<string> {
     return ipcRenderer.invoke('get-presage-api-key') as Promise<string>;
   },
-  loadAsset(name: 'mediapipe-loader' | 'mediapipe-wasm' | 'face-model' | 'segment-model'): Promise<Uint8Array> {
+  loadAsset(name: 'mediapipe-loader' | 'mediapipe-wasm' | 'face-model' | 'segment-model' | `watcher-${string}`): Promise<Uint8Array> {
     return ipcRenderer.invoke('load-asset', name) as Promise<Uint8Array>;
   },
   savePng(dataUrl: string): Promise<{ ok: boolean; path?: string; error?: string }> {
