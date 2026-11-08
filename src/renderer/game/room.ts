@@ -205,8 +205,8 @@ export function drawRoom(ctx: CanvasRenderingContext2D, v: RoomView): void {
     r.fillRect(p.fx - p.s * 0.45, p.footY - p.s * 0.12, p.s * 0.9, p.s * 0.24);
   }
   r.save();
-  r.filter = `blur(${Math.max(0.6, Math.min(2.2, p.s / 400))}px)`;
-  r.globalAlpha = lunging ? 1 : 0.9;
+  // Barely softened, so it reads clearly even against dark corners.
+  r.filter = `blur(${Math.min(0.8, p.s / 900)}px)`;
   if (!drawSprite(r, v, p, lunging)) {
     drawFigure(r, p.fx, p.footY, p.s, 0.55, lunging ? 0.95 : 0.78, v.pose, v.mouth);
   }
@@ -224,35 +224,22 @@ export function drawRoom(ctx: CanvasRenderingContext2D, v: RoomView): void {
     c.globalCompositeOperation = 'source-over';
   }
 
-  // Night security-camera grade over everything.
+  // Normal camera colours (play-test: a dark grey grade hid the Watcher
+  // against dark corners). Only the light dips for flicker and blackouts.
   const dread = Math.min(1, v.step / CAUGHT_STEP);
   const dx = v.shake ? (Math.random() - 0.5) * v.shake : 0;
   const dy = v.shake ? (Math.random() - 0.5) * v.shake : 0;
   ctx.save();
-  ctx.filter = `grayscale(1) sepia(0.3) brightness(${(behind ? 0.5 - dread * 0.12 : 0.7) * v.bright}) contrast(1.5)`;
+  if (v.bright < 0.999) ctx.filter = `brightness(${Math.max(0.08, v.bright)})`;
   ctx.drawImage(room, dx, dy);
-  // The player stays readable: muted colour at nearly normal brightness, so
-  // their eyes and expression show (the full grade made their eyes vanish).
-  if (behind && cut) {
-    ctx.filter = `grayscale(0.55) sepia(0.2) brightness(${0.95 * Math.max(0.35, v.bright)}) contrast(1.1)`;
-    ctx.drawImage(cut, dx, dy);
-  }
+  if (behind && cut) ctx.drawImage(cut, dx, dy);
   ctx.restore();
 
-  // Rolling scan line, like an old camera.
-  const scanY = ((v.time / 9) % (h + 80)) - 40;
-  const sg = ctx.createLinearGradient(0, scanY - 40, 0, scanY + 40);
-  sg.addColorStop(0, 'rgba(255,255,255,0)');
-  sg.addColorStop(0.5, 'rgba(255,255,255,0.05)');
-  sg.addColorStop(1, 'rgba(255,255,255,0)');
-  ctx.fillStyle = sg;
-  ctx.fillRect(0, scanY - 40, w, 80);
-
-  // Vignette tightens as it gets closer.
-  const inner = Math.min(w, h) * (0.5 - dread * 0.28);
+  // A light vignette that tightens as it gets closer.
+  const inner = Math.min(w, h) * (0.6 - dread * 0.25);
   const g = ctx.createRadialGradient(w / 2, h / 2, inner, w / 2, h / 2, Math.max(w, h) * 0.75);
   g.addColorStop(0, 'rgba(0,0,0,0)');
-  g.addColorStop(1, `rgba(0,0,0,${0.7 + dread * 0.25})`);
+  g.addColorStop(1, `rgba(0,0,0,${0.25 + dread * 0.35})`);
   ctx.fillStyle = g;
   ctx.fillRect(0, 0, w, h);
 
