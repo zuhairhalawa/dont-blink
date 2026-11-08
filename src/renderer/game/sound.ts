@@ -18,6 +18,7 @@ export class GameAudio {
   private readonly master: GainNode;
   private readonly noise: AudioBuffer;
   private droneGain: GainNode | null = null;
+  private breathGain: GainNode | null = null;
   private heartGain: GainNode;
   private heartTimer: number | null = null;
   private bpm: number | null = null;
@@ -67,6 +68,29 @@ export class GameAudio {
     }
     lp.connect(g).connect(this.master);
     this.droneGain = g;
+
+    // Breathing: filtered noise swelling in and out about every 4.5 s,
+    // silent at the far end and louder as the Watcher comes closer.
+    const breathSrc = this.ctx.createBufferSource();
+    breathSrc.buffer = this.noise;
+    breathSrc.loop = true;
+    const bp = this.ctx.createBiquadFilter();
+    bp.type = 'bandpass';
+    bp.frequency.value = 650;
+    bp.Q.value = 0.9;
+    const swell = this.ctx.createGain();
+    swell.gain.value = 0.5;
+    const lfo = this.ctx.createOscillator();
+    lfo.frequency.value = 0.22;
+    const lfoDepth = this.ctx.createGain();
+    lfoDepth.gain.value = 0.5;
+    lfo.connect(lfoDepth).connect(swell.gain);
+    const bg = this.ctx.createGain();
+    bg.gain.value = 0;
+    breathSrc.connect(bp).connect(swell).connect(bg).connect(this.master);
+    breathSrc.start(t);
+    lfo.start(t);
+    this.breathGain = bg;
   }
 
   /** Live pulse in bpm, or null while it is not known yet. */
@@ -80,7 +104,10 @@ export class GameAudio {
   setDread(d: number): void {
     this.dread = Math.max(0, Math.min(1, d));
     const now = this.ctx.currentTime;
-    this.droneGain?.gain.setTargetAtTime(0.02 + this.dread * 0.28, now, 0.25);
+    // Up close the drone drops to dead silence, leaving only breath and heartbeat.
+    const drone = this.dread >= 0.74 ? 0 : 0.02 + this.dread * 0.3;
+    this.droneGain?.gain.setTargetAtTime(drone, now, this.dread >= 0.74 ? 0.05 : 0.25);
+    this.breathGain?.gain.setTargetAtTime(this.dread < 0.2 ? 0 : 0.05 + this.dread * 0.35, now, 0.3);
     this.heartGain.gain.setTargetAtTime(0.25 + this.dread * 0.75, now, 0.25);
   }
 

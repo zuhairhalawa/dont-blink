@@ -106,6 +106,7 @@ async function main(): Promise<void> {
   sdk.useMediaStream(stream);
 
   sdk.on('validationStatus', (code: number) => {
+    log('val', { code });
     statusEl.textContent = code === 0 ? 'Signal good. Blink when the circle turns red.' : `Adjusting (code ${code})`;
   });
   sdk.on('error', (code: number, message: string, retryable: boolean) => {
@@ -120,6 +121,7 @@ async function main(): Promise<void> {
 
     for (const b of face.blinking ?? []) {
       const ts = toMs(b.timestamp);
+      log('bs', { d: b.detected ? 1 : 0, st: b.stable ? 1 : 0, ts: Math.round(ts) });
       if (b.detected && !lastSdkDetected) {
         sdkLag.push(now - ts);
         log('sdkBlink', { lagMs: Math.round(now - ts), stable: b.stable ?? null });
@@ -132,6 +134,12 @@ async function main(): Promise<void> {
     }
 
     const lms = face.landmarks ?? [];
+    for (const f of lms) {
+      if (!f.value || f.value.length < 400) continue;
+      const el = ear(f.value, LEFT_EYE);
+      const er = ear(f.value, RIGHT_EYE);
+      if (el !== null && er !== null) log('ear', { l: +el.toFixed(4), r: +er.toFixed(4), ts: Math.round(toMs(f.timestamp)), st: f.stable ? 1 : 0 });
+    }
     const last = lms[lms.length - 1];
     if (last?.value && last.value.length >= 400) {
       lmLag.push(now - toMs(last.timestamp));
@@ -161,6 +169,8 @@ async function main(): Promise<void> {
   log('started', {});
   scheduleCue();
 }
+
+document.addEventListener('keydown', (e) => { if (e.key === ' ') log('key', {}); });
 
 main().catch((e: unknown) => {
   statusEl.textContent = 'Error: ' + (e instanceof Error ? e.message : String(e));

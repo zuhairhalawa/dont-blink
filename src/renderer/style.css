@@ -200,6 +200,12 @@ input:focus-visible {
   text-align: left;
 }
 
+.fineprint {
+  margin: 0;
+  font-size: 0.9rem;
+  color: var(--dim);
+}
+
 .goal {
   font: 600 1.3rem/1.2 var(--display);
   margin: 0.5rem 0 1.25rem;

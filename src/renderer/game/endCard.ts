@@ -26,7 +26,12 @@ const C = {
 const DISPLAY = '"Bahnschrift", "DIN Alternate", "Arial Narrow", sans-serif';
 const TEXT = '"Sitka Text", "Georgia", serif';
 
-export function drawEndCard(canvas: HTMLCanvasElement, s: RoundSummary, samples: readonly Sample[]): void {
+/**
+ * @param photo  The scare-cam still of the player's face (already mirrored),
+ *               or null when none was taken. Shown above the pulse chart.
+ */
+export function drawEndCard(canvas: HTMLCanvasElement, s: RoundSummary, samples: readonly Sample[],
+  photo: HTMLCanvasElement | null = null): void {
   canvas.width = CARD_W;
   canvas.height = CARD_H;
   const ctx = canvas.getContext('2d')!;
@@ -76,7 +81,24 @@ export function drawEndCard(canvas: HTMLCanvasElement, s: RoundSummary, samples:
   ctx.font = `400 20px ${TEXT}`;
   ctx.fillText('closest it came', 64, rowY + 40);
 
-  drawPulseChart(ctx, s, samples, 580, 90, 500, 440);
+  if (photo) {
+    // Scare cam: the player's face at the worst moment, toned to match the corridor.
+    const pw = 400;
+    const ph = Math.round((pw * photo.height) / photo.width);
+    ctx.save();
+    ctx.filter = 'sepia(0.55) contrast(1.15) brightness(0.95)';
+    ctx.drawImage(photo, 580, 44, pw, ph);
+    ctx.restore();
+    ctx.strokeStyle = s.outcome === 'caught' ? C.vein : C.bulb;
+    ctx.lineWidth = 4;
+    ctx.strokeRect(580, 44, pw, ph);
+    ctx.fillStyle = C.bone;
+    ctx.font = `400 22px ${TEXT}`;
+    ctx.fillText(s.outcome === 'caught' ? 'Your face when it caught you' : 'Your face when it came closest', 580, 44 + ph + 32);
+    drawPulseChart(ctx, s, samples, 580, 44 + ph + 92, 500, CARD_H - (44 + ph + 92) - 70);
+  } else {
+    drawPulseChart(ctx, s, samples, 580, 90, 500, 440);
+  }
 
   ctx.fillStyle = C.dim;
   ctx.font = `400 18px ${TEXT}`;

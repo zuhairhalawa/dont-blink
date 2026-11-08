@@ -18,7 +18,7 @@ import {
   createGame, startGame, onBlink, onFace, tick, secondsLeft, stareProgress,
   CAUGHT_STEP, type GameState,
 } from './game/rules';
-import { drawFrame } from './game/corridor';
+import { drawFrame, poseFor, POSES } from './game/corridor';
 import { GameAudio } from './game/sound';
 import { summarize, type Sample } from './game/summary';
 import { drawEndCard } from './game/endCard';
@@ -37,6 +37,9 @@ function show(id: ScreenId): void {
 // Sensor state (lives across rounds)
 // ---------------------------------------------------------------------------
 
+/** Validation codes good enough to play: kOk, kChestNotVisible, kCameraTuning. */
+const READY_CODES = new Set([0, 7, 10]);
+
 let sensor: PresageSensor | null = null;
 let latest: VitalsReading | null = null;
 let faceOk = false;
@@ -50,10 +53,12 @@ async function startCamera(): Promise<void> {
   sensor = s;
 
   s.on('hint', ({ code, message }) => {
-    faceOk = code === 0;
+    // Blinks only need the face. "Chest not visible" (7) and "camera
+    // adjusting" (10) affect breathing, not blinks, so they don't block play.
+    faceOk = READY_CODES.has(code);
     const el = $('ready-hint');
-    el.textContent = code === 0 ? 'Signal good. You can begin.' : message;
-    el.dataset['ok'] = String(code === 0);
+    el.textContent = faceOk ? 'Signal good. You can begin.' : message;
+    el.dataset['ok'] = String(faceOk);
     $<HTMLButtonElement>('btn-begin').disabled = !faceOk;
   });
 
@@ -112,12 +117,26 @@ class Round {
   private caughtAt: number | null = null;
   private lastBeat = 0;
   private done = false;
+  private moves = 0;
+  private closestShown = 0;
+  private lungeFrom = 0;
+  private nextBlackoutAt = Infinity;
+  /** Hidden video of the camera stream, used only for the scare-cam photo. */
+  private cam: HTMLVideoElement | null = null;
+  private photo: HTMLCanvasElement | null = null;
 
   start(): void {
     show('play');
     this.resize();
     window.addEventListener('resize', this.resize);
     this.audio.start();
+    if (sensor) {
+      this.cam = document.createElement('video');
+      this.cam.muted = true;
+      this.cam.playsInline = true;
+      this.cam.srcObject = sensor.mediaStream;
+      void this.cam.play().catch(() => undefined);
+    }
     this.introStart = performance.now();
     $('hud-message').textContent = 'Keep your eyes open.';
     $('hud-tally').textContent = '';
@@ -143,7 +162,7 @@ class Round {
     if (present && before.away) $('hud-message').textContent = '';
     if (this.game.step !== before.step) {
       // You looked away: it moved while you were not watching.
-      this.shownStep = this.game.step;
+      this.showStep(this.game.step, performance.now());
       this.audio.moved();
     }
   }
@@ -173,6 +192,7 @@ class Round {
     if (this.game.phase === 'ready' && t - this.introStart > 3000) {
       this.game = startGame(this.game, now);
       $('hud-message').textContent = '';
+      this.nextBlackoutAt = t + 7000;
     }
 
     const before = this.game;
@@ -183,13 +203,21 @@ class Round {
       this.audio.retreated();
     }
 
+    // Fake-outs: once it is part-way down the corridor, the bulb sometimes
+    // dies for a moment. Nothing moves; the dark does the work.
+    const dread = this.shownStep / CAUGHT_STEP;
+    if (this.game.phase === 'playing' && dread >= 0.25 && t >= this.nextBlackoutAt) {
+      this.bulbDipUntil = t + 300 + Math.random() * 450;
+      this.nextBlackoutAt = t + 5000 + Math.random() * 6000;
+    }
+
     // Eyelid animation: quick close, then open.
     if (t < this.lidsUntil) {
       this.lids = Math.min(1, this.lids + 0.45);
     } else {
       this.lids = Math.max(0, this.lids - 0.12);
     }
-    if (this.lids >= 0.95 || t < this.bulbDipUntil) this.shownStep = this.game.step;
+    if ((this.lids >= 0.95 || t < this.bulbDipUntil) && this.shownStep !== this.game.step) this.showStep(this.game.step, t);
 
     this.audio.setDread(this.shownStep / CAUGHT_STEP);
     this.audio.setPulse(latest?.pulseRate ?? null);
@@ -197,11 +225,13 @@ class Round {
     // End of round.
     if (this.game.phase === 'caught' && this.caughtAt === null) {
       this.caughtAt = t;
-      this.shownStep = CAUGHT_STEP;
+      this.lungeFrom = this.shownStep;
       this.lids = 0;
       this.lidsUntil = 0;
       this.audio.shriek();
-      this.endAt = t + 2600;
+      this.endAt = t + 2800;
+      // Scare cam: your face a quarter-second into the scare.
+      setTimeout(() => this.snap(), 250);
     }
     if (this.game.phase === 'survived' && this.endAt === null) {
       this.audio.release();
@@ -210,15 +240,26 @@ class Round {
     }
 
     const sinceCaught = this.caughtAt === null ? null : t - this.caughtAt;
+    let step = this.shownStep;
+    let mouth = 0;
+    if (sinceCaught !== null) {
+      // The lunge: a fast rush from wherever it stood, mouth tearing open.
+      const k = Math.min(1, sinceCaught / 200);
+      step = this.lungeFrom + (CAUGHT_STEP - this.lungeFrom) * k * k;
+      mouth = Math.min(1, sinceCaught / 320);
+    }
     drawFrame(this.ctx, {
       w: this.canvas.width,
       h: this.canvas.height,
       time: t,
-      step: this.shownStep,
+      step,
       lids: this.lids,
-      bulb: t < this.bulbDipUntil ? 0.08 : this.game.phase === 'survived' ? 0.6 : 1,
-      shake: sinceCaught !== null && sinceCaught < 700 ? 40 : 0,
-      redWash: sinceCaught !== null ? Math.max(0, 1 - sinceCaught / 1500) : 0,
+      bulb: t < this.bulbDipUntil ? 0.06 : this.game.phase === 'survived' ? 0.6 : 1,
+      shake: sinceCaught !== null && sinceCaught < 800 ? 46 : 0,
+      redWash: sinceCaught !== null && sinceCaught > 90 ? Math.max(0, 1 - sinceCaught / 1600) : 0,
+      flash: sinceCaught !== null && sinceCaught < 70 ? 0.85 : 0,
+      pose: sinceCaught !== null ? POSES[0]! : poseFor(this.moves),
+      mouth,
     });
     this.updateHud(t, now);
 
@@ -228,6 +269,31 @@ class Round {
     }
     this.raf = requestAnimationFrame(this.frame);
   };
+
+  /** Move the drawn Watcher to `step`, in a new pose; photograph a new closest moment. */
+  private showStep(step: number, t: number): void {
+    this.shownStep = step;
+    this.moves += 1;
+    if (step > this.closestShown) {
+      this.closestShown = step;
+      if (this.game.phase === 'playing') setTimeout(() => this.snap(), 300);
+    }
+    void t;
+  }
+
+  /** Grab one mirrored frame of the player's face into memory (never saved unless they choose Save image). */
+  private snap(): void {
+    const v = this.cam;
+    if (!v || v.readyState < 2 || !v.videoWidth) return;
+    const c = document.createElement('canvas');
+    c.width = 640;
+    c.height = Math.round((640 * v.videoHeight) / v.videoWidth);
+    const g = c.getContext('2d')!;
+    g.translate(c.width, 0);
+    g.scale(-1, 1);
+    g.drawImage(v, 0, 0, c.width, c.height);
+    this.photo = c;
+  }
 
   private updateHud(t: number, now: number): void {
     $('hud-time').textContent = String(secondsLeft(this.game, now));
@@ -251,12 +317,16 @@ class Round {
     window.removeEventListener('resize', this.resize);
     void this.audio.close();
     round = null;
+    if (this.cam) {
+      this.cam.srcObject = null;
+      this.cam = null;
+    }
     if (!showCard) {
       show('consent');
       return;
     }
     const summary = summarize(this.game, this.samples);
-    drawEndCard($<HTMLCanvasElement>('card'), summary, this.samples);
+    drawEndCard($<HTMLCanvasElement>('card'), summary, this.samples, this.photo);
     $('save-status').textContent = '';
     show('end');
     $('btn-again').focus();

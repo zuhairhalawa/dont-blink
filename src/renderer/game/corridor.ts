@@ -30,6 +30,42 @@ export interface FrameView {
   shake: number;
   /** 0-1 red wash (jump scare). */
   redWash: number;
+  /** 0-1 white flash (the instant of the jump scare). */
+  flash: number;
+  /** How the Watcher is standing this time you open your eyes. */
+  pose: Pose;
+  /** 0 = mouth a thin slit, 1 = torn wide open. */
+  mouth: number;
+}
+
+/**
+ * The Watcher never stands the same way twice: each time it moves, it takes
+ * the next pose, so opening your eyes is never predictable.
+ */
+export interface Pose {
+  /** Head roll in radians (negative = toward its right shoulder). */
+  tilt: number;
+  /** Head offset sideways, world units. */
+  headX: number;
+  /** Which arm reaches toward you: -1 left, 1 right, 0 none. */
+  reach: -1 | 0 | 1;
+  /** How far the head drops forward, world units. */
+  hunch: number;
+}
+
+export const POSES: readonly Pose[] = [
+  { tilt: -0.08, headX: 0, reach: 0, hunch: 0 },
+  { tilt: 0.42, headX: 0.04, reach: 0, hunch: 0.02 },
+  { tilt: -0.5, headX: -0.05, reach: 1, hunch: 0.04 },
+  { tilt: 0.12, headX: 0.02, reach: -1, hunch: 0.07 },
+  { tilt: -0.95, headX: -0.08, reach: 0, hunch: 0.1 },
+  { tilt: 0.62, headX: 0.06, reach: 1, hunch: 0.05 },
+  { tilt: 0, headX: 0, reach: -1, hunch: 0.12 },
+];
+
+/** The pose for the n-th move of a round. */
+export function poseFor(moves: number): Pose {
+  return POSES[((moves % POSES.length) + POSES.length) % POSES.length]!;
 }
 
 const PALETTE = {
@@ -60,19 +96,22 @@ export function watcherDepth(step: number): number {
   return DEPTHS[i]! + (DEPTHS[i + 1]! - DEPTHS[i]!) * k;
 }
 
-/** Natural bulb flicker: mostly steady, with brief irregular dips. */
-export function flicker(time: number): number {
+/**
+ * Bulb flicker: mostly steady, with brief irregular dips that come more often
+ * the closer the Watcher is (dread 0-1).
+ */
+export function flicker(time: number, dread = 0): number {
   const s = Math.sin(time * 0.0131) + Math.sin(time * 0.0377 + 1.3) + Math.sin(time * 0.091 + 0.4);
-  return s > 2.35 ? 0.35 : 1;
+  return s > 2.35 - dread * 1.1 ? 0.3 : 1;
 }
 
 /**
- * Light falling on a point at depth z (0 to about 0.8): a pool of light under
- * the bulb that dies quickly into the dark, plus almost no ambient light.
+ * Light falling on a point at depth z (0 to about 0.65): a pool of light under
+ * the bulb that dies quickly into the dark, and almost no ambient light.
  */
 function lightAt(z: number, bulb: number): number {
   const d = z - BULB_Z;
-  return 0.012 + bulb * 0.8 / (1 + (d * d) / 3.2) * Math.exp(-z / 30);
+  return 0.006 + bulb * 0.65 / (1 + (d * d) / 3.2) * Math.exp(-z / 30);
 }
 
 function shade(rgb: readonly number[], l: number): string {
@@ -85,7 +124,7 @@ function shade(rgb: readonly number[], l: number): string {
 
 export function drawFrame(ctx: CanvasRenderingContext2D, v: FrameView): void {
   const { w, h } = v;
-  const bulb = v.bulb * flicker(v.time);
+  const bulb = v.bulb * flicker(v.time, Math.min(1, v.step / CAUGHT_STEP));
   const f = h * 0.92;
   const cx = w / 2 + (v.shake ? (Math.random() - 0.5) * v.shake : 0);
   const cy = h * 0.47 + (v.shake ? (Math.random() - 0.5) * v.shake : 0);
@@ -125,7 +164,7 @@ export function drawFrame(ctx: CanvasRenderingContext2D, v: FrameView): void {
   const wz = watcherDepth(v.step);
   const bulbDraw = () => drawBulb(ctx, px(0, BULB_Z), py(BULB_Y, BULB_Z), py(CEIL_Y, BULB_Z), (f / BULB_Z) * 0.045, bulb);
   if (wz < BULB_Z) bulbDraw();
-  drawWatcher(ctx, wz, bulb, px, py, f);
+  drawWatcher(ctx, wz, bulb, px, py, f, v.pose, v.mouth);
   if (wz >= BULB_Z) bulbDraw();
 
   // Vignette tightens as the Watcher gets closer.
@@ -144,6 +183,10 @@ export function drawFrame(ctx: CanvasRenderingContext2D, v: FrameView): void {
     ctx.fillRect(0, 0, w, h);
   }
   if (v.lids > 0) drawLids(ctx, w, h, v.lids);
+  if (v.flash > 0) {
+    ctx.fillStyle = `rgba(255,250,240,${v.flash})`;
+    ctx.fillRect(0, 0, w, h);
+  }
 }
 
 function quad(ctx: CanvasRenderingContext2D, x1: number, y1: number, x2: number, y2: number,
@@ -169,7 +212,8 @@ function quad(ctx: CanvasRenderingContext2D, x1: number, y1: number, x2: number,
  * fully visible when close.
  */
 function drawWatcher(ctx: CanvasRenderingContext2D, z: number, bulb: number,
-  px: (x: number, z: number) => number, py: (y: number, z: number) => number, f: number): void {
+  px: (x: number, z: number) => number, py: (y: number, z: number) => number, f: number,
+  pose: Pose, mouth: number): void {
   const s = f / z;
   const fx = px(0, z);
   const footY = py(FLOOR_Y, z);
@@ -203,19 +247,19 @@ function drawWatcher(ctx: CanvasRenderingContext2D, z: number, bulb: number,
   ctx.fill();
 
   // Arms hang outside the coat, down past the knees.
-  arm(ctx, X, Y, s, -1, lit);
-  arm(ctx, X, Y, s, 1, lit);
+  arm(ctx, X, Y, s, -1, lit, pose.reach === -1);
+  arm(ctx, X, Y, s, 1, lit, pose.reach === 1);
 
   // Neck.
   ctx.fillStyle = 'rgb(10,8,7)';
-  ctx.fillRect(X(-0.035), Y(-0.2), 0.07 * s, 0.13 * s);
+  ctx.fillRect(X(-0.035 + pose.headX / 2), Y(-0.2 + pose.hunch), 0.07 * s, 0.13 * s);
 
   // Mask, tilted slightly as if listening.
   // Up close the pale mask catches all the light there is.
   const lm = Math.min(1, Math.max(0.1 + l * 1.3, z < 1.5 ? 0.85 : 0));
   ctx.save();
-  ctx.translate(X(0.005), Y(-0.33));
-  ctx.rotate(-0.08);
+  ctx.translate(X(0.005 + pose.headX), Y(-0.33 + pose.hunch));
+  ctx.rotate(pose.tilt);
   ctx.beginPath();
   ctx.ellipse(0, 0, 0.12 * s, 0.17 * s, 0, 0, Math.PI * 2);
   const mg = ctx.createRadialGradient(-0.02 * s, -0.07 * s, 0.01 * s, 0, 0, 0.19 * s);
@@ -268,35 +312,52 @@ function drawWatcher(ctx: CanvasRenderingContext2D, z: number, bulb: number,
   ctx.lineTo(-0.03 * s, 0.065 * s);
   ctx.stroke();
 
-  // A thin slit for a mouth, turned down at one end.
+  // The mouth: a thin slit that tears wide open in the lunge.
+  ctx.fillStyle = '#000';
   ctx.strokeStyle = '#000';
-  ctx.lineWidth = Math.max(1, 0.008 * s);
-  ctx.lineCap = 'round';
-  ctx.beginPath();
-  ctx.moveTo(-0.04 * s, 0.085 * s);
-  ctx.quadraticCurveTo(0.0, 0.08 * s, 0.035 * s, 0.095 * s);
-  ctx.stroke();
+  if (mouth > 0.05) {
+    ctx.beginPath();
+    ctx.ellipse(-0.002 * s, (0.095 + 0.02 * mouth) * s, (0.035 + 0.012 * mouth) * s, (0.008 + 0.06 * mouth) * s, 0.05, 0, Math.PI * 2);
+    ctx.fill();
+  } else {
+    ctx.lineWidth = Math.max(1, 0.008 * s);
+    ctx.lineCap = 'round';
+    ctx.beginPath();
+    ctx.moveTo(-0.04 * s, 0.085 * s);
+    ctx.quadraticCurveTo(0.0, 0.08 * s, 0.035 * s, 0.095 * s);
+    ctx.stroke();
+  }
   ctx.restore();
 }
 
 /** One arm: upper arm from the shoulder, a long forearm, and four long fingers. */
 function arm(ctx: CanvasRenderingContext2D, X: (x: number) => number, Y: (y: number) => number,
-  s: number, side: -1 | 1, lit: number): void {
+  s: number, side: -1 | 1, lit: number, reach: boolean): void {
   const sx = side * 0.25;
   ctx.strokeStyle = `rgb(${(14 + 45 * lit) | 0},${(11 + 32 * lit) | 0},${(9 + 20 * lit) | 0})`;
   ctx.lineCap = 'round';
   ctx.lineJoin = 'round';
   ctx.lineWidth = Math.max(1, 0.05 * s);
+  // A reaching arm rises to chest height and stretches toward you, fingers splayed.
+  const hand = reach ? { x: side * 0.5, y: -0.12 } : { x: side * 0.33, y: 0.72 };
   ctx.beginPath();
   ctx.moveTo(X(sx), Y(0.02));
-  ctx.quadraticCurveTo(X(side * 0.33), Y(0.35), X(side * 0.33), Y(0.72));
+  if (reach) ctx.quadraticCurveTo(X(side * 0.42), Y(0.12), X(hand.x), Y(hand.y));
+  else ctx.quadraticCurveTo(X(side * 0.33), Y(0.35), X(hand.x), Y(hand.y));
   ctx.stroke();
-  // Fingers.
   ctx.lineWidth = Math.max(1, 0.012 * s);
-  for (const dx of [-0.02, -0.005, 0.01, 0.024]) {
+  const fingers = [-0.02, -0.005, 0.01, 0.024];
+  for (const [i, dx] of fingers.entries()) {
     ctx.beginPath();
-    ctx.moveTo(X(side * 0.33 + dx), Y(0.72));
-    ctx.quadraticCurveTo(X(side * 0.335 + dx * 1.4), Y(0.8), X(side * 0.33 + dx * 1.2), Y(0.9));
+    ctx.moveTo(X(hand.x + dx), Y(hand.y));
+    if (reach) {
+      // Spread out and curling toward the viewer.
+      const ang = -0.9 + i * 0.45;
+      ctx.quadraticCurveTo(X(hand.x + side * 0.06 + dx), Y(hand.y - 0.05 + i * 0.02),
+        X(hand.x + side * 0.11 * Math.cos(ang)), Y(hand.y + 0.1 * Math.sin(ang)));
+    } else {
+      ctx.quadraticCurveTo(X(hand.x + 0.005 * side + dx * 1.4), Y(hand.y + 0.08), X(hand.x + dx * 1.2), Y(hand.y + 0.18));
+    }
     ctx.stroke();
   }
 }
