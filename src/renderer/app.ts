@@ -84,7 +84,10 @@ async function startCamera(): Promise<void> {
     if (round) round.onReading(r);
   });
 
-  s.on('blink', () => round?.onBlink(Date.now()));
+  s.on('blink', () => {
+    console.info('[blink]');
+    round?.onBlink(Date.now());
+  });
 
   s.on('fatalError', (message) => {
     sensor = null;
@@ -100,6 +103,7 @@ async function startCamera(): Promise<void> {
   // because the SDK's status doesn't change when the player turns away.
   if (faceWatchSupported()) {
     faceWatch = new FaceWatch(stream, (present) => {
+      console.info(`[face] ${present ? 'facing the screen' : 'looked away'}`);
       facing = present;
       refreshReady(lastSdkMessage);
       round?.onFace(present, Date.now());
