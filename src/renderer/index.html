@@ -22,7 +22,7 @@
       <ul class="points">
         <li><strong>The camera watches your eyes.</strong> The game uses your webcam to see when you blink or look away, and to read your pulse and breathing rate.</li>
         <li><strong>Video stays on this computer.</strong> The Presage SmartSpectra SDK processes the video on this device, and the head check that notices when you turn away (Google MediaPipe) runs on this device too. Frames are never uploaded or saved. The SDK goes online only to check the API key.</li>
-        <li><strong>One photo, kept only in memory.</strong> When the Watcher gets closest, the game takes one still of your face for the end card. It and your blinks and pulse stay in memory for the round and are gone when you close the game. Nothing is saved unless you choose Save image.</li>
+        <li><strong>One photo, kept only in memory.</strong> When the Watcher gets closest, the game takes one still of your face for the end card. It and your blinks and pulse stay in memory for the round and are gone when you close the game. Nothing is saved unless you choose Save image. To keep your face out of a recording or stream, turn on <strong>Hide my face</strong> on the next screen.</li>
         <li><strong>A game, not a medical device.</strong> The numbers are estimates for fun. Expect flickering light and one sudden loud sound.</li>
       </ul>
       <label class="check">
@@ -46,6 +46,10 @@
       <li>Hold your stare for 8 seconds and it backs off.</li>
     </ol>
     <p class="fineprint">It sees full blinks. A quick flutter may slip past.</p>
+    <label class="check hide-face-option">
+      <input type="checkbox" id="hide-face" />
+      <span>Hide my face on screen, for recording or streaming. Your face is blurred in the game and in the end-card photo; the game still works normally.</span>
+    </label>
     <p class="goal">Last 60 seconds.</p>
     <div class="actions">
       <button id="btn-begin" class="btn primary" type="button" disabled>Begin</button>
@@ -58,6 +62,7 @@
     <canvas id="corridor"></canvas>
     <div class="hud">
       <p id="hud-time" class="hud-time" aria-label="Seconds left">60</p>
+      <p id="hud-eye" class="hud-eye" data-closed="false" aria-label="Your eyes"><span class="eye-open" aria-hidden="true"></span><span class="eye-label">eyes open</span></p>
       <p class="hud-pulse"><span id="hud-beat" class="beat" aria-hidden="true"></span><span id="hud-bpm">–</span> <small>bpm</small></p>
       <p id="hud-message" class="hud-message" aria-live="assertive"></p>
       <div class="hud-bottom">

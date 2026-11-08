@@ -126,6 +126,11 @@ export interface RoomView {
   mouth: number;
   /** Photo-real Watcher images, if generated; otherwise it is drawn. */
   sprites?: Sprites;
+  /**
+   * Privacy mode: blur the player's face in everything drawn (the tracking
+   * still reads the clear camera). The Watcher stays sharp.
+   */
+  hideFace?: boolean;
 }
 
 export const FULL_BODY: SpriteName[] = ['watcher-stand', 'watcher-tilt', 'watcher-reach', 'watcher-hunch'];
@@ -177,6 +182,70 @@ export function drawSprite(ctx: CanvasRenderingContext2D, v: RoomView, p: Placem
 
 let room: HTMLCanvasElement | null = null;
 let cut: HTMLCanvasElement | null = null;
+let tmp: HTMLCanvasElement | null = null;
+/** An ellipse in pixels. */
+export interface Ellipse { cx: number; cy: number; rx: number; ry: number }
+
+/**
+ * The area to blur when the player hides their face: an ellipse a good deal
+ * larger than the tracked face (hair, ears, and some slack for movement
+ * between tracker updates), clamped to the picture.
+ */
+export function faceBlurArea(face: ScreenFace, w: number, h: number): Ellipse {
+  const rx = Math.min(w / 2, face.w * w * 1.1);
+  const ry = Math.min(h / 2, face.h * h * 0.95);
+  return { cx: face.cx * w, cy: (face.cy - face.h * 0.08) * h, rx, ry };
+}
+
+/** Blur the inside of an ellipse on a canvas, in place. */
+function blurEllipse(g: CanvasRenderingContext2D, e: Ellipse, strength: number): void {
+  const m = strength * 2;
+  const sx = Math.max(0, Math.floor(e.cx - e.rx - m));
+  const sy = Math.max(0, Math.floor(e.cy - e.ry - m));
+  const sw = Math.min(g.canvas.width, Math.ceil(e.cx + e.rx + m)) - sx;
+  const sh = Math.min(g.canvas.height, Math.ceil(e.cy + e.ry + m)) - sy;
+  if (sw <= 0 || sh <= 0) return;
+  tmp = canvasOf(tmp, sw, sh);
+  const t = tmp.getContext('2d')!;
+  t.clearRect(0, 0, sw, sh);
+  t.drawImage(g.canvas, sx, sy, sw, sh, 0, 0, sw, sh);
+  g.save();
+  g.beginPath();
+  g.ellipse(e.cx, e.cy, e.rx, e.ry, 0, 0, Math.PI * 2);
+  g.clip();
+  g.filter = `blur(${strength}px)`;
+  g.drawImage(tmp, sx, sy);
+  g.drawImage(tmp, sx, sy);
+  g.restore();
+}
+
+/** Blur a whole canvas in place (used when the face can't be located). */
+function blurAll(g: CanvasRenderingContext2D, strength: number): void {
+  const { width: w, height: h } = g.canvas;
+  tmp = canvasOf(tmp, w, h);
+  const t = tmp.getContext('2d')!;
+  t.clearRect(0, 0, w, h);
+  t.drawImage(g.canvas, 0, 0);
+  g.save();
+  g.filter = `blur(${strength}px)`;
+  g.drawImage(tmp, 0, 0);
+  g.restore();
+}
+
+/**
+ * Privacy mode: hide the player's face in a layer. With a tracked face, the
+ * face area is blurred; without one, the whole layer is, so a lost face never
+ * shows.
+ */
+function hideFaceIn(g: CanvasRenderingContext2D, face: ScreenFace | null, w: number, h: number): void {
+  if (face) {
+    const area = faceBlurArea(face, w, h);
+    blurEllipse(g, area, Math.max(18, area.rx / 4));
+  } else {
+    blurAll(g, Math.max(24, w / 50));
+  }
+}
+
 
 function canvasOf(c: HTMLCanvasElement | null, w: number, h: number): HTMLCanvasElement {
   const out = c ?? document.createElement('canvas');
@@ -225,6 +294,7 @@ export function drawRoom(ctx: CanvasRenderingContext2D, v: RoomView): void {
   const r = room.getContext('2d')!;
   r.globalCompositeOperation = 'source-over';
   drawCoverMirrored(r, video, vw, vh, w, h);
+  if (v.hideFace) hideFaceIn(r, v.face, w, h);
 
   // The Watcher, standing in the room.
   const p = placeWatcher(v.step, v.face, w, h);
@@ -264,6 +334,7 @@ export function drawRoom(ctx: CanvasRenderingContext2D, v: RoomView): void {
     c.globalCompositeOperation = 'destination-in';
     drawCoverMirrored(c, v.mask, v.mask.width, v.mask.height, w, h);
     c.globalCompositeOperation = 'source-over';
+    if (v.hideFace) hideFaceIn(c, v.face, w, h);
   }
 
   // Normal camera colours (play-test: a dark grey grade hid the Watcher

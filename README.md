@@ -22,6 +22,8 @@ Your blinks, pulse and breathing are read from an ordinary webcam by the [Presag
 
    Save it as a PNG if you like.
 
+Recording or streaming? Turn on **Hide my face** on the get-ready screen to blur yourself out.
+
 ## What reads what
 
 | Signal | Source | Used for |
@@ -50,6 +52,7 @@ These measurements shaped the design:
 - **What goes online.** Presage's SDK contacts Presage to check the API key. It can also send Presage an anonymous per-session usage summary (no video, no readings), but only if you tick the box on the consent screen. It's off by default.
 - **Blocked usage report.** Google's MediaPipe library tries to send Google a usage report when it closes. The app's content security policy blocks it, so nothing is sent.
 - **One photo, in memory only.** When the Watcher gets closest, the game takes one still of your room for the end card. It stays in memory with your blinks and pulse, and is gone when you close the game. Nothing is written to disk unless you click **Save image**.
+- **Hide my face.** For recording or streaming, the get-ready screen has a **Hide my face** switch. It blurs the player's face in everything the game draws, including the preview and the end-card photo, while blinks, pulse and head turns are still read from the clear camera. If the face tracker briefly loses the face, the whole player is blurred instead, so a face never slips through. An eye icon on the play screen shows each blink registering.
 - **No other services.** No AI service, analytics or account is used at runtime.
 
 ## Setup

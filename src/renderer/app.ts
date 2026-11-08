@@ -54,6 +54,15 @@ let personMask: PersonMask | null = null;
 let camVideo: HTMLVideoElement | null = null;
 /** Photo-real Watcher images, loaded once at startup if they exist. */
 let sprites: Sprites = {};
+/** Privacy mode: blur the player's face in everything the game draws. */
+let hideFace = false;
+
+/** Show the eyes as open or closed on the play screen. */
+function showEyes(closed: boolean): void {
+  const el = $('hud-eye');
+  el.dataset['closed'] = String(closed);
+  el.querySelector('.eye-label')!.textContent = closed ? 'eyes closed' : 'eyes open';
+}
 
 /** The player's face on screen (mirrored, normalised), if head tracking has one. */
 function screenFace(w: number, h: number): ScreenFace | null {
@@ -105,6 +114,9 @@ async function startCamera(): Promise<void> {
   });
 
   s.on('blink', () => {
+    // A Presage blink: flash the eye indicator shut for a moment.
+    showEyes(true);
+    setTimeout(() => showEyes(false), 160);
     console.info('[blink]');
     round?.onBlink(Date.now());
   });
@@ -137,6 +149,7 @@ async function startCamera(): Promise<void> {
     // Long eye closures: Presage reports quick blinks, so held-shut eyes come
     // from MediaPipe's eye scores.
     hw.onEyes = (closed) => {
+      showEyes(closed);
       console.info(`[eyes] ${closed ? 'closed' : 'open'}`);
       round?.onEyes(closed, Date.now());
     };
@@ -356,7 +369,7 @@ class Round {
     if (camVideo && camVideo.readyState >= 2) {
       // It's in your room.
       drawRoom(this.ctx, { ...effects, w, h, video: camVideo, mask: personMask?.hasMask ? personMask.canvas : null,
-        face: screenFace(w, h), bright: light, poseIndex: this.moves, sprites });
+        face: screenFace(w, h), bright: light, poseIndex: this.moves, sprites, hideFace });
     } else {
       // No camera picture yet: fall back to the corridor.
       drawFrame(this.ctx, { ...effects, w, h, bulb: light });
@@ -396,7 +409,7 @@ class Round {
       w: c.width, h: c.height, time: performance.now(), video: v,
       mask: personMask?.hasMask ? personMask.canvas : null, face: screenFace(c.width, c.height),
       step: CAUGHT_STEP - 1, lids: 0, bright: 1.15, shake: 0, redWash: 0, flash: 0, pose: poseFor(this.moves), mouth: 0,
-      poseIndex: this.moves, sprites,
+      poseIndex: this.moves, sprites, hideFace,
     });
     this.photo = c;
   }
@@ -472,6 +485,10 @@ document.addEventListener('DOMContentLoaded', () => {
   });
 
   $('btn-begin').addEventListener('click', beginRound);
+  $<HTMLInputElement>('hide-face').addEventListener('change', (e) => {
+    hideFace = (e.target as HTMLInputElement).checked;
+    document.querySelector('.eye-frame')!.classList.toggle('face-hidden', hideFace);
+  });
   $('btn-again').addEventListener('click', () => {
     show('ready');
     $<HTMLButtonElement>('btn-begin').disabled = !faceOk;

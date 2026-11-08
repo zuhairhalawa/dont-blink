@@ -200,6 +200,61 @@ input:focus-visible {
   text-align: left;
 }
 
+.hide-face-option {
+  max-width: 34rem;
+  margin: 0.75rem 0 0;
+  text-align: left;
+}
+
+/* Privacy mode: the framing preview is blurred too. */
+.eye-frame.face-hidden video {
+  filter: blur(16px) sepia(0.35);
+}
+
+/* Eye indicator: an almond eye that shuts when the eyes close, so viewers of
+   a recording can see each blink register even with the face blurred. */
+.hud-eye {
+  position: absolute;
+  top: 5.2rem;
+  right: 2rem;
+  margin: 0;
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  font: 600 1rem/1 var(--display);
+  color: var(--dim);
+}
+
+.eye-open {
+  width: 2.2rem;
+  height: 1.2rem;
+  border: 3px solid var(--bone);
+  border-radius: 50% / 50%;
+  position: relative;
+}
+
+.eye-open::after {
+  content: "";
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 0.5rem;
+  height: 0.5rem;
+  margin: -0.25rem 0 0 -0.25rem;
+  border-radius: 50%;
+  background: var(--bone);
+}
+
+.hud-eye[data-closed="true"] .eye-open {
+  height: 0;
+  border-width: 2px;
+  border-color: var(--vein);
+}
+
+.hud-eye[data-closed="true"] .eye-open::after { display: none; }
+
+.hud-eye[data-closed="true"] { color: var(--vein); }
+
 .fineprint {
   margin: 0;
   font-size: 0.9rem;
