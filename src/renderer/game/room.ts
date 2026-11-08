@@ -24,49 +24,84 @@ export interface Placement {
   s: number;
   /** Which side of the player it approaches from. */
   side: -1 | 1;
+  /** Distance from the camera in metres (0 during the lunge). */
+  depth: number;
 }
 
 /**
- * Where to draw the Watcher for a (fractional) step.
+ * Distance from the camera, in metres, for each step. Steps 0-5 are spread
+ * across the room; 6 and 7 are right behind the player's shoulder (the
+ * player sits about 0.6 m from a laptop webcam).
+ */
+export const STEP_DEPTHS = [4.2, 3.4, 2.7, 2.15, 1.7, 1.35, 1.0, 0.85];
+/** Sideways spot (metres from the player's side) for each step, so every step lands somewhere new. */
+const STEP_SIDE = [1.25, 0.8, 1.15, 0.7, 1.0, 0.65, 0.42, 0.38];
+/** Webcam assumptions: about 70 degrees across, lens 1.1 m above the floor. */
+const HFOV_DEG = 70;
+const CAMERA_HEIGHT = 1.1;
+/** Mask size in metres. */
+const MASK_M = 0.25;
+
+/** Height of the Watcher's mask above the floor: tall far away, stooping as it closes in. */
+export function maskHeightAt(depth: number): number {
+  const t = Math.max(0, Math.min(1, (depth - 1.3) / (3 - 1.3)));
+  return 1.2 + (1.85 - 1.2) * t;
+}
+
+/**
+ * Where to draw the Watcher for a (fractional) step, using a simple pinhole
+ * camera, so its size, its height in the frame and its feet on the floor all
+ * change the way a real person's would walking toward a webcam.
  *
- *   step 0:  standing small in the background, on the side of the room with
- *            more space
- *   step 7:  looming just behind the player's shoulder, its mask a little
- *            above and beside their face, larger than their head
- *   step 8:  the lunge; its mask fills the middle of the screen
+ *   steps 0-5:  standing in the room, further to the side the further away,
+ *               in a different spot each step
+ *   steps 6-7:  right behind the player's shoulder, its mask beside their head
+ *   step 8:     the lunge; its mask fills the middle of the screen
  */
 export function placeWatcher(step: number, face: ScreenFace | null, w: number, h: number): Placement {
   const f = face ?? { cx: 0.5, cy: 0.45, w: 0.2, h: 0.28 };
   const side: -1 | 1 = f.cx > 0.5 ? -1 : 1;
-
-  // Mask centre and mask height (px) at the far end...
-  const far = { x: (side === -1 ? 0.13 : 0.87) * w, y: 0.42 * h, mask: 0.06 * h };
-  // ...and right behind the shoulder.
-  const near = {
-    x: (f.cx + side * f.w * 0.95) * w,
-    y: (f.cy - f.h * 0.3) * h,
-    mask: f.h * h * 1.25,
-  };
-  // The lunge: centred, mask taller than the screen.
-  const lunge = { x: 0.5 * w, y: 0.5 * h, mask: 1.25 * h };
+  const focal = w / 2 / Math.tan(((HFOV_DEG / 2) * Math.PI) / 180);
+  // The horizon sits at the player's eye line (their eyes are near lens height).
+  const horizon = (f.cy - f.h * 0.12) * h;
+  const centreX = f.cx * w;
 
   const k = Math.max(0, Math.min(CAUGHT_STEP, step));
-  let x: number, y: number, mask: number;
+  const at = (i: number) => {
+    const d = STEP_DEPTHS[i]!;
+    if (i >= 6) {
+      // Behind the shoulder: mask beside and a little above the player's head.
+      const mask = f.h * h * (i === 6 ? 1.0 : 1.3);
+      return { x: (f.cx + side * f.w * (i === 6 ? 1.2 : 0.95)) * w, y: (f.cy - f.h * 0.3) * h, mask, d };
+    }
+    const mask = (focal * MASK_M) / d;
+    const x = centreX + (focal * side * STEP_SIDE[i]!) / d;
+    const y = horizon - (focal * (maskHeightAt(d) - CAMERA_HEIGHT)) / d;
+    return { x, y, mask, d };
+  };
+
+  let x: number, y: number, mask: number, depth: number;
   if (k <= CAUGHT_STEP - 1) {
-    const t = k / (CAUGHT_STEP - 1);
-    // Size grows geometrically, so each step feels like the same jump closer.
-    mask = far.mask * Math.pow(near.mask / far.mask, t);
-    const e = t * t * (3 - 2 * t);
-    x = far.x + (near.x - far.x) * e;
-    y = far.y + (near.y - far.y) * e;
+    const i = Math.floor(k);
+    const a = at(i);
+    const b = at(Math.min(CAUGHT_STEP - 1, i + 1));
+    const t = k - i;
+    x = a.x + (b.x - a.x) * t;
+    y = a.y + (b.y - a.y) * t;
+    mask = a.mask + (b.mask - a.mask) * t;
+    depth = a.d + (b.d - a.d) * t;
   } else {
+    const a = at(CAUGHT_STEP - 1);
     const t = k - (CAUGHT_STEP - 1);
-    mask = near.mask + (lunge.mask - near.mask) * t;
-    x = near.x + (lunge.x - near.x) * t;
-    y = near.y + (lunge.y - near.y) * t;
+    x = a.x + (0.5 * w - a.x) * t;
+    y = a.y + (0.5 * h - a.y) * t;
+    mask = a.mask + (1.25 * h - a.mask) * t;
+    depth = a.d * (1 - t);
   }
+  // Keep it inside the picture horizontally.
+  x = Math.max(mask * 0.6, Math.min(w - mask * 0.6, x));
   const s = mask / MASK_HEIGHT;
-  return { fx: x, footY: y + MASK_CENTRE_UP * s, s, side };
+  return { fx: x, footY: y + MASK_CENTRE_UP * s, s, side, depth };
 }
 
 export interface RoomView {
@@ -205,10 +240,17 @@ export function drawRoom(ctx: CanvasRenderingContext2D, v: RoomView): void {
     r.fillRect(p.fx - p.s * 0.45, p.footY - p.s * 0.12, p.s * 0.9, p.s * 0.24);
   }
   r.save();
-  // Barely softened, so it reads clearly even against dark corners.
-  r.filter = `blur(${Math.min(0.8, p.s / 900)}px)`;
-  if (!drawSprite(r, v, p, lunging)) {
-    drawFigure(r, p.fx, p.footY, p.s, 0.55, lunging ? 0.95 : 0.78, v.pose, v.mouth);
+  // Distance shading: darker and softer far away, sharp and lit up close.
+  const near = Math.max(0, Math.min(1, (4.2 - p.depth) / 3.2));
+  r.filter = `blur(${(1.1 - near * 0.8).toFixed(2)}px) brightness(${(0.6 + near * 0.45).toFixed(2)})`;
+  // A faint breathing sway, so it looks alive while it waits.
+  const q = lunging ? p : {
+    ...p,
+    s: p.s * (1 + 0.012 * Math.sin(v.time / 900)),
+    fx: p.fx + p.s * 0.012 * Math.sin(v.time / 1300),
+  };
+  if (!drawSprite(r, v, q, lunging)) {
+    drawFigure(r, q.fx, q.footY, q.s, 0.55, lunging ? 0.95 : 0.78, v.pose, v.mouth);
   }
   r.restore();
 
