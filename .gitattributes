@@ -1,0 +1,16 @@
+# Normalise all text files to LF in the repository.
+# Git will convert CRLF to LF on commit and leave checkouts as-is on Linux/macOS,
+# or convert LF → CRLF on Windows checkouts if core.autocrlf=true is set locally.
+* text=auto eol=lf
+
+# Binaries — never touch line endings
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.ico binary
+*.webm binary
+*.mp4 binary
+*.mov binary
+*.wasm binary
+*.node binary

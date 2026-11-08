@@ -1,0 +1,25 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta http-equiv="Content-Security-Policy"
+    content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; worker-src blob:; media-src blob: *" />
+  <title>Blink probe</title>
+  <style>
+    body { margin: 0; background: #0b0b0d; color: #ddd; font: 18px system-ui, sans-serif; display: grid; place-items: center; height: 100vh; }
+    #cue { width: 160px; height: 160px; border-radius: 50%; background: #222; margin: 24px auto; }
+    #cue[data-on="true"] { background: #e11d2e; }
+    #stats { white-space: pre; font-family: Consolas, monospace; font-size: 15px; }
+    main { text-align: center; }
+  </style>
+</head>
+<body>
+  <main>
+    <p id="status">Starting camera…</p>
+    <div id="cue" data-on="false"></div>
+    <p id="ear"></p>
+    <p id="stats"></p>
+  </main>
+  <script src="probe.js"></script>
+</body>
+</html>

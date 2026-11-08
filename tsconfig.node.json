@@ -1,0 +1,24 @@
+{
+  "$schema": "https://json.schemastore.org/tsconfig",
+  "extends": "./tsconfig.base.json",
+  "compilerOptions": {
+    /* Node: CommonJS, node16 resolution so @smartspectra/node-sdk exports resolve */
+    "lib": ["ES2022"],
+    "module": "Node16",
+    "moduleResolution": "Node16",
+    "noEmit": true
+  },
+  "include": [
+    "apps/scare-meter/main.ts",
+    "apps/scare-meter/preload.ts",
+    "kit/ai/**/*",
+    "kit/signal/**/*",
+    "kit/vitals/VitalsSource.ts",
+    "kit/vitals/decodeReading.ts",
+    "kit/vitals/types.ts"
+  ],
+  "exclude": [
+    "node_modules",
+    "dist"
+  ]
+}

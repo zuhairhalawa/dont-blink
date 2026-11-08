@@ -1,0 +1,101 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <!--
+    Content Security Policy — must allow:
+      worker-src blob:   — SmartSpectra SDK spins up web workers via blob: URLs
+      media-src blob: *  — captureStream() and getUserMedia produce blob: / opaque streams
+    All other sources are restricted to 'self'.
+  -->
+  <meta
+    http-equiv="Content-Security-Policy"
+    content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; worker-src blob:; media-src blob: *"
+  />
+  <title>Scare Meter</title>
+  <link rel="stylesheet" href="app.css" />
+</head>
+<body>
+  <!-- Stop button — visible on every non-consent screen -->
+  <button id="stop-btn" class="stop-btn" hidden aria-label="Stop session">
+    &#9632; Stop
+  </button>
+
+  <!-- Demo-mode badge — shown when launched with --demo -->
+  <div id="demo-badge" class="demo-badge" hidden>Demo mode — recorded video</div>
+
+  <!-- ------------------------------------------------------------------ -->
+  <!-- View: consent                                                         -->
+  <!-- ------------------------------------------------------------------ -->
+  <section id="view-consent" class="view active">
+    <!-- mountConsentScreen() renders into this element -->
+  </section>
+
+  <!-- ------------------------------------------------------------------ -->
+  <!-- View: calibration                                                    -->
+  <!-- ------------------------------------------------------------------ -->
+  <section id="view-calibration" class="view" hidden>
+    <div class="view-inner">
+      <h2 class="view-title">Calibration</h2>
+
+      <!-- Camera preview — mirrored so the user sees themselves naturally -->
+      <video
+        id="calibration-preview"
+        class="calibration-preview"
+        muted
+        playsinline
+        aria-hidden="true"
+      ></video>
+
+      <!-- CalibrationView mounts the live readout here -->
+      <div id="calibration-readout"></div>
+
+      <div class="calibration-status">
+        <!-- Phase text: "Warming up…" or "Measuring your resting rate." -->
+        <p id="calibration-status-text" class="calibration-status-text" aria-live="polite"></p>
+        <span id="calibration-countdown" class="countdown" aria-live="polite"></span>
+        <span id="calibration-hint" class="calibration-hint" hidden aria-live="polite"></span>
+      </div>
+
+      <!-- Shown only when baseline or warm-up comes back without enough data -->
+      <button id="calibration-retry-btn" class="btn btn-secondary" hidden>
+        Try again
+      </button>
+    </div>
+  </section>
+
+  <!-- ------------------------------------------------------------------ -->
+  <!-- View: scene (Phase 11)                                               -->
+  <!-- ------------------------------------------------------------------ -->
+  <section id="view-scene" class="view" hidden>
+    <div class="view-inner">
+      <canvas id="scene-canvas" class="scene-canvas" aria-hidden="true"></canvas>
+    </div>
+  </section>
+
+  <!-- ------------------------------------------------------------------ -->
+  <!-- View: report (Phase 12)                                              -->
+  <!-- ------------------------------------------------------------------ -->
+  <section id="view-report" class="view" hidden>
+    <div class="view-inner" id="report-root">
+      <!-- ReportView renders here in Phase 12 -->
+      <p>Session ended. Report will appear here in a later phase.</p>
+    </div>
+  </section>
+
+  <!-- ------------------------------------------------------------------ -->
+  <!-- Fatal-error modal                                                    -->
+  <!-- ------------------------------------------------------------------ -->
+  <div id="error-modal" class="modal-backdrop" hidden role="alertdialog" aria-modal="true" aria-labelledby="error-title">
+    <div class="modal">
+      <h2 id="error-title" class="modal-title">Something went wrong</h2>
+      <p id="error-message" class="modal-message"></p>
+      <button id="error-close-btn" class="btn btn-primary">Close</button>
+    </div>
+  </div>
+
+  <!-- Renderer bundle (output of esbuild) -->
+  <script src="renderer.js"></script>
+</body>
+</html>

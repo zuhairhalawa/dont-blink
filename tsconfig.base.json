@@ -1,0 +1,29 @@
+{
+  "$schema": "https://json.schemastore.org/tsconfig",
+  "compilerOptions": {
+    /* Language */
+    "target": "ES2022",
+    "useDefineForClassFields": true,
+
+    /* Strict */
+    "strict": true,
+    "noUncheckedIndexedAccess": true,
+    "noImplicitOverride": true,
+    "noPropertyAccessFromIndexSignature": false,
+
+    /* Output — overridden by each child config */
+    "noEmit": true,
+
+    /* Interop */
+    "esModuleInterop": true,
+    "resolveJsonModule": true,
+    "skipLibCheck": true,
+    "forceConsistentCasingInFileNames": true,
+
+    /* Paths alias — shared by all configs */
+    "baseUrl": ".",
+    "paths": {
+      "kit/*": ["./kit/*"]
+    }
+  }
+}

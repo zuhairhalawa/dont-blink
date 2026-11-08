@@ -1,0 +1,26 @@
+{
+  "$schema": "https://json.schemastore.org/tsconfig",
+  "extends": "./tsconfig.base.json",
+  "compilerOptions": {
+    /* bundler resolution is required so TypeScript resolves package.json
+       "exports" maps (e.g. @smartspectra/node-sdk/messages and /renderer).
+       DOM lib is required for RendererVitalsSource (MediaStream, etc.).
+       ESNext module pairs with bundler resolution per the TS docs. */
+    "lib": ["ES2022", "DOM"],
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "noEmit": true,
+    /* Tests index arrays they just built; a wrong index fails the test anyway. */
+    "noUncheckedIndexedAccess": false
+  },
+  "include": [
+    "test/**/*",
+    "kit/signal/**/*",
+    "kit/vitals/**/*",
+    "kit/ai/**/*"
+  ],
+  "exclude": [
+    "node_modules",
+    "dist"
+  ]
+}
