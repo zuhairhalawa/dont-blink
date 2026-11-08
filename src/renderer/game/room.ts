@@ -93,14 +93,16 @@ export interface RoomView {
   sprites?: Sprites;
 }
 
-const FULL_BODY: SpriteName[] = ['watcher-stand', 'watcher-tilt', 'watcher-reach', 'watcher-hunch'];
+export const FULL_BODY: SpriteName[] = ['watcher-stand', 'watcher-tilt', 'watcher-reach', 'watcher-hunch'];
 
 /**
  * Draw a photo pose sized from the placement's mask height, or return false
- * so the drawn Watcher is used. Heights are relative to the mask: a full-body
- * photo is about 7.5 masks tall, the leaning shot about 3, the scream close-up 1.5.
+ * so the drawn Watcher is used. Proportions measured on the generated images:
+ * in the full-body shots the mask is about a tenth of the figure's height,
+ * with its centre 7% from the top; the leaning shot is mostly mask (its
+ * centre a third of the way down); the scream close-up is the mask.
  */
-function drawSprite(ctx: CanvasRenderingContext2D, v: RoomView, p: Placement, lunging: boolean): boolean {
+export function drawSprite(ctx: CanvasRenderingContext2D, v: RoomView, p: Placement, lunging: boolean): boolean {
   const sp = v.sprites;
   if (!sp) return false;
   const maskPx = p.s * MASK_HEIGHT;
@@ -108,22 +110,33 @@ function drawSprite(ctx: CanvasRenderingContext2D, v: RoomView, p: Placement, lu
   let img: HTMLCanvasElement | undefined;
   let height: number;
   let top: number;
+  let flip = false;
   if (lunging) {
     img = sp['watcher-scream'];
-    height = maskPx * 1.5;
+    height = maskPx * 1.05;
     top = maskY - height / 2;
   } else if (v.step >= 5.5 && sp['watcher-lean']) {
     img = sp['watcher-lean'];
-    height = maskPx * 3;
-    top = maskY - maskPx * 0.75;
+    height = maskPx * 1.6;
+    top = maskY - height * 0.33;
+    // The photo leans to the right; mirror it when it comes from the right.
+    flip = p.side === 1;
   } else {
     img = sp[FULL_BODY[v.poseIndex % FULL_BODY.length]!] ?? sp['watcher-stand'];
-    height = maskPx * 7.5;
-    top = maskY - maskPx * 0.6;
+    height = maskPx * 9.6;
+    top = maskY - height * 0.07;
   }
   if (!img) return false;
   const width = (height * img.width) / img.height;
-  ctx.drawImage(img, p.fx - width / 2, top, width, height);
+  if (flip) {
+    ctx.save();
+    ctx.translate(p.fx, 0);
+    ctx.scale(-1, 1);
+    ctx.drawImage(img, -width / 2, top, width, height);
+    ctx.restore();
+  } else {
+    ctx.drawImage(img, p.fx - width / 2, top, width, height);
+  }
   return true;
 }
 

@@ -65,6 +65,34 @@ export function keyImage(img: CanvasImageSource & { width: number; height: numbe
   return out;
 }
 
+/**
+ * Fade the edges where a photo is cropped through the body (the leaning shot
+ * is cut at its bottom and left), so it dissolves into the dark instead of
+ * ending in a straight line. Fractions are of width and height.
+ */
+export function fadeEdges(c: HTMLCanvasElement, edges: { bottom?: number; left?: number }): void {
+  const g = c.getContext('2d')!;
+  g.save();
+  g.globalCompositeOperation = 'destination-in';
+  if (edges.bottom) {
+    const y0 = c.height * (1 - edges.bottom);
+    const grad = g.createLinearGradient(0, y0, 0, c.height);
+    grad.addColorStop(0, 'rgba(0,0,0,1)');
+    grad.addColorStop(1, 'rgba(0,0,0,0)');
+    g.fillStyle = grad;
+    g.fillRect(0, 0, c.width, c.height);
+  }
+  if (edges.left) {
+    const x1 = c.width * edges.left;
+    const grad = g.createLinearGradient(0, 0, x1, 0);
+    grad.addColorStop(0, 'rgba(0,0,0,0)');
+    grad.addColorStop(1, 'rgba(0,0,0,1)');
+    g.fillStyle = grad;
+    g.fillRect(0, 0, c.width, c.height);
+  }
+  g.restore();
+}
+
 /** Load and key every image that exists; quietly skip the rest. */
 export async function loadSprites(load: (name: SpriteName) => Promise<Uint8Array>): Promise<Sprites> {
   const out: Sprites = {};
@@ -72,8 +100,10 @@ export async function loadSprites(load: (name: SpriteName) => Promise<Uint8Array
     try {
       const bytes = await load(name);
       const bmp = await createImageBitmap(new Blob([bytes], { type: 'image/png' }));
-      out[name] = keyImage(bmp);
+      const keyed = keyImage(bmp);
       bmp.close();
+      if (name === 'watcher-lean') fadeEdges(keyed, { bottom: 0.35, left: 0.2 });
+      out[name] = keyed;
     } catch {
       // Not generated yet: the drawn Watcher stands in.
     }
